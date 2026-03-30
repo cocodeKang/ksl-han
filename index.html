@@ -398,7 +398,8 @@
     }
 
     .text-popup.type-example,
-    .text-popup.type-definition {
+    .text-popup.type-definition,
+    .text-popup.type-form {
       width: min(1040px, calc(100% - 24px));
     }
 
@@ -731,6 +732,7 @@
                 <button id="btnShowHeadword">표제어 팝업 (Q)</button>
                 <button id="btnShowDefinition">뜻풀이 팝업 (E)</button>
                 <button id="btnShowExample">용례 팝업/편집 (A)</button>
+                <button id="btnShowForm">수형 팝업/편집 (G)</button>
               </div>
               <div class="field">
                 <label>재생 속도</label>
@@ -784,7 +786,7 @@
             <li>재생 중 원하는 시점에서 <strong>현재시간 → 시작</strong>, <strong>현재시간 → 종료</strong> 버튼으로 구간 저장</li>
             <li>필요하면 뜻풀이·용례·수형·메모를 수정한 뒤 CSV 또는 엑셀로 다운로드</li>
             <li>한 번 저장한 데이터는 브라우저 저장소에 남아서 다음 실행 때 자동 복구</li>
-            <li>단축키: F 전체화면 / Space 재생·멈춤 / [ 시작 / ] 종료 / \ 초기화 / { 시작으로 / } 종료로 / ←→ ±5초 / Shift+←→ ±1초 / , . 프레임 이동 / &lt; &gt; 재생속도 / X 가림막 표시 / Shift+X 가림막 추가 / Q 표제어 / E 뜻풀이 / Shift+E 뜻풀이 편집 / A 용례 / Shift+A 용례 편집 / P 구간 미리보기 / Shift+P 반복 / 0~9 재생 위치 이동 / Ctrl+E 행 복제</li>
+            <li>단축키: F 전체화면 / Space 재생·멈춤 / [ 시작 / ] 종료 / \ 초기화 / { 시작으로 / } 종료로 / ←→ ±5초 / Shift+←→ ±1초 / , . 프레임 이동 / &lt; &gt; 재생속도 / X 가림막 표시 / Shift+X 가림막 추가 / Q 표제어 / E 뜻풀이 / Shift+E 뜻풀이 편집 / A 용례 / Shift+A 용례 편집 / G 수형 / Shift+G 수형 편집 / P 구간 미리보기 / Shift+P 반복 / 0~9 재생 위치 이동 / Ctrl+E 행 복제 / Ctrl+F 검색창</li>
           </ul>
         </section>
 
@@ -1449,7 +1451,7 @@
     function getOverlayFieldInfo(type) {
       const row = getSelectedRow();
       if (!row || !type) return null;
-      const labelMap = { headword: '표제어', definition: '뜻풀이', example: '용례' };
+      const labelMap = { headword: '표제어', definition: '뜻풀이', example: '용례', form: '수형' };
       const value = getCell(row, type) || '';
       return {
         row,
@@ -1517,20 +1519,20 @@
       if (!el) return;
       const info = getOverlayFieldInfo(state.overlay.type);
       if (!state.overlay.visible || !info) {
-        el.classList.remove('visible', 'type-headword', 'type-definition', 'type-example');
+        el.classList.remove('visible', 'type-headword', 'type-definition', 'type-example', 'type-form');
         el.setAttribute('aria-hidden', 'true');
         el.innerHTML = '';
         return;
       }
       const currentValue = info.value || '';
-      const editableTypes = new Set(['example', 'definition']);
+      const editableTypes = new Set(['example', 'definition', 'form']);
       const isEditable = editableTypes.has(info.type);
-      const hotkeyMap = { headword: 'Q', definition: 'E', example: 'A' };
+      const hotkeyMap = { headword: 'Q', definition: 'E', example: 'A', form: 'G' };
       const hint = isEditable
-        ? (state.overlay.editMode ? 'Enter 저장 · Shift+Enter 줄바꿈 · Esc 닫기' : `${hotkeyMap[info.type] || ''} 닫기 · Shift+${hotkeyMap[info.type] || ''} 편집`)
+        ? (state.overlay.editMode ? 'Enter 저장 · Shift+Enter 줄바꿈 · Esc 닫기' : `Enter 또는 ${hotkeyMap[info.type] || ''} 닫기 · Shift+${hotkeyMap[info.type] || ''} 편집`)
         : 'Esc 닫기';
 
-      el.classList.remove('type-headword', 'type-definition', 'type-example');
+      el.classList.remove('type-headword', 'type-definition', 'type-example', 'type-form');
       el.classList.add('visible', `type-${info.type}`);
       el.setAttribute('aria-hidden', 'false');
       el.innerHTML = `
@@ -1680,7 +1682,7 @@
 
     function renderField(row, field) {
       const value = row[field.key] ?? '';
-      const full = ['definition', 'example', 'note'].includes(field.type) || /뜻풀이|용례|메모|비고/.test(field.label);
+      const full = ['definition', 'example', 'form', 'note'].includes(field.type) || /뜻풀이|용례|수형|수형문|손모양|메모|비고/.test(field.label);
       const useTextarea = full || String(value).length > 40;
       return `
         <div class="field ${full ? 'full' : ''}">
@@ -2373,6 +2375,7 @@
       $('#btnShowHeadword').onclick = () => toggleTextPopup('headword');
       $('#btnShowDefinition').onclick = () => toggleTextPopup('definition');
       $('#btnShowExample').onclick = () => toggleTextPopup('example');
+      $('#btnShowForm').onclick = () => toggleTextPopup('form');
       bindMaskInputs();
 
       document.addEventListener('keydown', (e) => {
@@ -2381,6 +2384,13 @@
           saveStateToLocalStorage(state.sourceName || '브라우저 저장본');
           setStatus('브라우저 저장 완료');
           showToast('브라우저 저장');
+          return;
+        }
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+          e.preventDefault();
+          $('#searchInput')?.focus();
+          $('#searchInput')?.select?.();
+          showToast('검색창 이동');
           return;
         }
         if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'e') {
@@ -2398,8 +2408,15 @@
           return;
         }
 
+        if (state.overlay.visible && !state.overlay.editMode && e.key === 'Enter') {
+          e.preventDefault();
+          closeTextPopup();
+          return;
+        }
+
         if (e.shiftKey && (e.key === 'A' || e.key === 'a')) { e.preventDefault(); enterPopupEdit('example'); return; }
         if (e.shiftKey && (e.key === 'E' || e.key === 'e')) { e.preventDefault(); enterPopupEdit('definition'); return; }
+        if (e.shiftKey && (e.key === 'G' || e.key === 'g')) { e.preventDefault(); enterPopupEdit('form'); return; }
         if (e.shiftKey && (e.key === 'X' || e.key === 'x')) { e.preventDefault(); addMask(); return; }
         if (e.shiftKey && (e.key === 'P' || e.key === 'p')) {
           e.preventDefault();
@@ -2421,6 +2438,7 @@
         if (e.key === 'q' || e.key === 'Q') { e.preventDefault(); toggleTextPopup('headword'); return; }
         if (e.key === 'a' || e.key === 'A') { e.preventDefault(); toggleTextPopup('example'); return; }
         if (e.key === 'e' || e.key === 'E') { e.preventDefault(); toggleTextPopup('definition'); return; }
+        if (e.key === 'g' || e.key === 'G') { e.preventDefault(); toggleTextPopup('form'); return; }
         if (e.key === 'Escape') { e.preventDefault(); closeTextPopup(); return; }
 
         if (e.key === 'ArrowRight' && !e.shiftKey) {
