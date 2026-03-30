@@ -788,7 +788,7 @@
             <li>재생 중 원하는 시점에서 <strong>현재시간 → 시작</strong>, <strong>현재시간 → 종료</strong> 버튼으로 구간 저장</li>
             <li>필요하면 뜻풀이·용례·수형·메모를 수정한 뒤 CSV 또는 엑셀로 다운로드</li>
             <li>한 번 저장한 데이터는 브라우저 저장소에 남아서 다음 실행 때 자동 복구</li>
-            <li>단축키: F 전체화면 / Space 재생·멈춤 / [ 시작 / ] 종료 / \ 초기화 / { 시작으로 / } 종료로 / ← 이전 영상 / → 다음 영상 / Ctrl+←→ ±5초 / Shift+←→ ±1초 / , . 프레임 이동 / &lt; &gt; 재생속도 / X 가림막 표시 / Shift+X 가림막 추가 / Q 표제어 / E 뜻풀이 / Shift+E 뜻풀이 편집 / A 용례 / Shift+A 용례 편집 / G 수형 / Shift+G 수형 편집 / P 구간 미리보기 / Shift+P 반복 / R 전체 랜덤 ON/OFF / Ctrl+E 행 복제 / Ctrl+F 검색창</li>
+            <li>단축키: F 전체화면 / Space 재생·멈춤 / [ 시작 / ] 종료 / \ 초기화 / { 시작으로 / } 종료로 / ← 이전 영상 / → 다음 영상 / Ctrl+←→ ±5초 / Shift+←→ ±1초 / , . 프레임 이동 / &lt; &gt; 재생속도 / X 가림막 표시 / Shift+X 가림막 추가 / Q 표제어 / E 뜻풀이 / Shift+E 뜻풀이 편집 / Ctrl+E 뜻풀이 초기화 편집 / A 용례 / Shift+A 용례 편집 / Ctrl+A 용례 초기화 편집 / G 수형 / Shift+G 수형 편집 / Ctrl+G 수형 초기화 편집 / P 구간 미리보기 / Shift+P 반복 / R 전체 랜덤 ON/OFF / Ctrl+R 행 복제 / Ctrl+F 검색창</li>
           </ul>
         </section>
 
@@ -888,6 +888,11 @@
         visible: false,
         type: null,
         editMode: false
+      },
+      maskState: {
+        masks: [],
+        masksVisible: false,
+        activeMaskId: null
       },
       cloud: {
         user: null,
@@ -1082,11 +1087,38 @@
     function ensureRowMeta(row) {
       if (!row._id) row._id = cryptoRandomId();
       if (!row._meta || typeof row._meta !== 'object') row._meta = {};
-      if (!Array.isArray(row._meta.masks)) row._meta.masks = [];
-      if (typeof row._meta.masksVisible !== 'boolean') row._meta.masksVisible = row._meta.masks.length > 0;
-      if (row._meta.activeMaskId == null && row._meta.masks.length) row._meta.activeMaskId = row._meta.masks[row._meta.masks.length - 1].id;
       if (typeof row._sort !== 'number') row._sort = Number(row._sort ?? Date.now());
       return row;
+    }
+
+    function ensureMaskState() {
+      if (!state.maskState || typeof state.maskState !== 'object') {
+        state.maskState = { masks: [], masksVisible: false, activeMaskId: null };
+      }
+      if (!Array.isArray(state.maskState.masks)) state.maskState.masks = [];
+      if (typeof state.maskState.masksVisible !== 'boolean') state.maskState.masksVisible = state.maskState.masks.length > 0;
+      if (state.maskState.activeMaskId == null && state.maskState.masks.length) {
+        state.maskState.activeMaskId = state.maskState.masks[state.maskState.masks.length - 1].id;
+      }
+      return state.maskState;
+    }
+
+    function migrateLegacyMasksFromRows(preferredRowId = state.selectedRowId) {
+      const store = ensureMaskState();
+      if (store.masks.length) return false;
+      const preferred = state.rows.find(r => r._id === preferredRowId);
+      const sourceRow = [preferred, ...state.rows].find(row => Array.isArray(row?._meta?.masks) && row._meta.masks.length);
+      if (!sourceRow) return false;
+      try {
+        store.masks = (typeof structuredClone === 'function'
+          ? structuredClone(sourceRow._meta.masks)
+          : JSON.parse(JSON.stringify(sourceRow._meta.masks)));
+      } catch (err) {
+        store.masks = (sourceRow._meta.masks || []).map(mask => ({ ...mask }));
+      }
+      store.masksVisible = sourceRow._meta.masksVisible !== false;
+      store.activeMaskId = sourceRow._meta.activeMaskId || store.masks[store.masks.length - 1]?.id || null;
+      return true;
     }
 
     function newMask() {
@@ -1101,29 +1133,25 @@
       };
     }
 
-    function getMaskList(row = getSelectedRow()) {
-      if (!row) return [];
-      ensureRowMeta(row);
-      return row._meta.masks;
+    function getMaskList() {
+      return ensureMaskState().masks;
     }
 
-    function getActiveMask(row = getSelectedRow()) {
-      if (!row) return null;
-      ensureRowMeta(row);
-      const list = row._meta.masks;
+    function getActiveMask() {
+      const store = ensureMaskState();
+      const list = store.masks;
       if (!list.length) return null;
-      let mask = list.find(m => m.id === row._meta.activeMaskId);
+      let mask = list.find(m => m.id === store.activeMaskId);
       if (!mask) {
         mask = list[list.length - 1];
-        row._meta.activeMaskId = mask.id;
+        store.activeMaskId = mask.id;
       }
       return mask || null;
     }
 
-    function setActiveMask(maskId, row = getSelectedRow()) {
-      if (!row) return;
-      ensureRowMeta(row);
-      row._meta.activeMaskId = maskId || null;
+    function setActiveMask(maskId) {
+      const store = ensureMaskState();
+      store.activeMaskId = maskId || null;
       renderMasks();
       syncMaskUI();
     }
@@ -1264,6 +1292,7 @@
         randomMode: state.randomMode,
         exampleStudyMode: state.exampleStudyMode,
         randomOrderIds: state.randomOrderIds,
+        maskState: ensureMaskState(),
         currentVideoId: state.currentVideoId || null,
         currentVideoTime: currentTime,
         updatedAt: serverTimestamp()
@@ -1403,6 +1432,15 @@
           state.randomMode = !!sessionData?.randomMode;
           state.exampleStudyMode = !!sessionData?.exampleStudyMode;
           state.randomOrderIds = Array.isArray(sessionData?.randomOrderIds) ? sessionData.randomOrderIds : state.randomOrderIds;
+          if (sessionData?.maskState && typeof sessionData.maskState === 'object') {
+            state.maskState = {
+              masks: Array.isArray(sessionData.maskState.masks) ? sessionData.maskState.masks : [],
+              masksVisible: sessionData.maskState.masksVisible !== false,
+              activeMaskId: sessionData.maskState.activeMaskId || null
+            };
+          } else {
+            migrateLegacyMasksFromRows(sessionData?.selectedRowId || state.selectedRowId);
+          }
           renderAll();
           state.cloud.suppressRemote = false;
         });
@@ -1525,7 +1563,8 @@
           workspaceId: state.cloud.workspaceId || 'default',
           randomMode: state.randomMode,
           exampleStudyMode: state.exampleStudyMode,
-          randomOrderIds: state.randomOrderIds
+          randomOrderIds: state.randomOrderIds,
+          maskState: ensureMaskState()
         };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
         localStorage.setItem(SAVE_TS_KEY, String(Date.now()));
@@ -1551,8 +1590,16 @@
         state.randomMode = !!parsed.randomMode;
         state.exampleStudyMode = !!parsed.exampleStudyMode;
         state.randomOrderIds = Array.isArray(parsed.randomOrderIds) ? parsed.randomOrderIds : [];
+        state.maskState = parsed.maskState && typeof parsed.maskState === 'object'
+          ? {
+              masks: Array.isArray(parsed.maskState.masks) ? parsed.maskState.masks : [],
+              masksVisible: parsed.maskState.masksVisible !== false,
+              activeMaskId: parsed.maskState.activeMaskId || null
+            }
+          : state.maskState;
         $('#workspaceIdInput').value = state.cloud.workspaceId;
         if (state.rows.length) state.selectedRowId = state.rows[0]._id;
+        migrateLegacyMasksFromRows(state.selectedRowId);
         return true;
       } catch (err) {
         console.error(err);
@@ -1657,25 +1704,41 @@
       openTextPopup(type, false);
     }
 
-    function enterPopupEdit(type) {
+    function enterPopupEdit(type, { clearOnOpen = false } = {}) {
+      const clearEditor = () => {
+        const editor = $('#popupEditor');
+        if (editor) {
+          editor.value = '';
+          editor.focus();
+          setStatus(`${getOverlayFieldInfo(type)?.label || '텍스트'} 내용을 비웠습니다.`);
+          showToast(`${getOverlayFieldInfo(type)?.label || '텍스트'} 초기화`);
+        }
+      };
+
       if (!state.overlay.visible || state.overlay.type !== type) {
         openTextPopup(type, true);
-        setTimeout(() => $('#popupEditor')?.focus(), 0);
+        setTimeout(() => {
+          const editor = $('#popupEditor');
+          if (editor) {
+            editor.focus();
+            if (clearOnOpen) clearEditor();
+          }
+        }, 0);
         return;
       }
       if (!state.overlay.editMode) {
         state.overlay.editMode = true;
         renderTextPopup();
-        setTimeout(() => $('#popupEditor')?.focus(), 0);
+        setTimeout(() => {
+          const editor = $('#popupEditor');
+          if (editor) {
+            editor.focus();
+            if (clearOnOpen) clearEditor();
+          }
+        }, 0);
         return;
       }
-      const editor = $('#popupEditor');
-      if (editor) {
-        editor.value = '';
-        editor.focus();
-        setStatus(`${getOverlayFieldInfo(type)?.label || '텍스트'} 내용을 비웠습니다.`);
-        showToast(`${getOverlayFieldInfo(type)?.label || '텍스트'} 초기화`);
-      }
+      clearEditor();
     }
 
     function saveOverlayEdit(closeAfter = false) {
@@ -1712,7 +1775,7 @@
       const isEditable = editableTypes.has(info.type);
       const hotkeyMap = { headword: 'Q', definition: 'E', example: 'A', form: 'G' };
       const hint = isEditable
-        ? (state.overlay.editMode ? `Enter 저장 · Shift+Enter 줄바꿈 · Shift+${hotkeyMap[info.type] || ''} 초기화 · Esc 닫기` : `Enter 또는 ${hotkeyMap[info.type] || ''} 닫기 · Shift+${hotkeyMap[info.type] || ''} 편집`)
+        ? (state.overlay.editMode ? `Enter 저장 · Shift+Enter 줄바꿈 · Shift+${hotkeyMap[info.type] || ''} 초기화 · Esc 닫기` : `Enter 또는 ${hotkeyMap[info.type] || ''} 닫기 · Shift+${hotkeyMap[info.type] || ''} 편집 · Ctrl+${hotkeyMap[info.type] || ''} 초기화 편집`)
         : 'Esc 닫기';
 
       el.classList.remove('type-headword', 'type-definition', 'type-example', 'type-form');
@@ -2137,14 +2200,12 @@
     }
 
     function renderMasks() {
-      const row = getSelectedRow();
+      const store = ensureMaskState();
       maskLayer.innerHTML = '';
-      if (!row) return;
-      ensureRowMeta(row);
-      const list = row._meta.masks;
+      const list = store.masks;
       list.forEach((mask) => {
         const el = document.createElement('div');
-        el.className = 'mask-item' + ((row._meta.masksVisible !== false && mask.visible !== false) ? ' visible' : '') + (mask.id === row._meta.activeMaskId ? ' selected' : '');
+        el.className = 'mask-item' + ((store.masksVisible !== false && mask.visible !== false) ? ' visible' : '') + (mask.id === store.activeMaskId ? ' selected' : '');
         el.dataset.maskId = mask.id;
         el.style.left = `${mask.x}%`;
         el.style.top = `${mask.y}%`;
@@ -2155,11 +2216,11 @@
         el.addEventListener('mousedown', beginMaskPointer);
         el.addEventListener('click', (ev) => {
           ev.stopPropagation();
-          setActiveMask(mask.id, row);
+          setActiveMask(mask.id);
         });
         maskLayer.appendChild(el);
       });
-      $('#btnToggleMask').classList.toggle('active', !!(row._meta.masksVisible !== false && list.length));
+      $('#btnToggleMask').classList.toggle('active', !!(store.masksVisible !== false && list.length));
     }
 
     function syncMaskUI() {
@@ -2188,53 +2249,46 @@
     }
 
     function persistMask() {
-      const row = getSelectedRow();
       saveStateToLocalStorage(state.sourceName || '브라우저 저장본');
-      if (row) scheduleRowSync(row);
+      scheduleWorkspaceSessionSave();
     }
 
     function toggleMask() {
-      const row = getSelectedRow();
-      if (!row) return;
-      ensureRowMeta(row);
-      if (!row._meta.masks.length) {
+      const store = ensureMaskState();
+      if (!store.masks.length) {
         const mask = newMask();
-        row._meta.masks.push(mask);
-        row._meta.activeMaskId = mask.id;
-        row._meta.masksVisible = true;
+        store.masks.push(mask);
+        store.activeMaskId = mask.id;
+        store.masksVisible = true;
         showToast('가림막 생성');
       } else {
-        row._meta.masksVisible = !(row._meta.masksVisible !== false);
-        showToast(row._meta.masksVisible ? '가림막 보이기' : '가림막 가리기');
+        store.masksVisible = !(store.masksVisible !== false);
+        showToast(store.masksVisible ? '가림막 보이기' : '가림막 가리기');
       }
       syncMaskUI();
       persistMask();
     }
 
     function addMask() {
-      const row = getSelectedRow();
-      if (!row) return;
-      ensureRowMeta(row);
+      const store = ensureMaskState();
       const mask = newMask();
-      row._meta.masks.push(mask);
-      row._meta.activeMaskId = mask.id;
-      row._meta.masksVisible = true;
+      store.masks.push(mask);
+      store.activeMaskId = mask.id;
+      store.masksVisible = true;
       syncMaskUI();
       persistMask();
-      showToast(`가림막 추가 (${row._meta.masks.length})`);
+      showToast(`가림막 추가 (${store.masks.length})`);
     }
 
     function removeMask() {
-      const row = getSelectedRow();
-      if (!row) return;
-      ensureRowMeta(row);
-      if (!row._meta.masks.length) {
+      const store = ensureMaskState();
+      if (!store.masks.length) {
         showToast('삭제할 가림막 없음');
         return;
       }
-      const removed = row._meta.masks.pop();
-      row._meta.activeMaskId = row._meta.masks[row._meta.masks.length - 1]?.id || null;
-      if (!row._meta.masks.length) row._meta.masksVisible = false;
+      store.masks.pop();
+      store.activeMaskId = store.masks[store.masks.length - 1]?.id || null;
+      if (!store.masks.length) store.masksVisible = false;
       syncMaskUI();
       persistMask();
       setStatus('최근 생성된 가림막부터 삭제했습니다.');
@@ -2264,13 +2318,11 @@
     }
 
     function beginMaskPointer(ev) {
-      const row = getSelectedRow();
-      if (!row) return;
       const el = ev.currentTarget;
       const maskId = el.dataset.maskId;
-      const mask = getMaskList(row).find(m => m.id === maskId);
+      const mask = getMaskList().find(m => m.id === maskId);
       if (!mask) return;
-      setActiveMask(maskId, row);
+      setActiveMask(maskId);
       ev.preventDefault();
       const rect = $('#videoShell').getBoundingClientRect();
       const startX = ev.clientX;
@@ -2418,6 +2470,11 @@
       const insertAt = idx >= 0 ? idx : state.rows.length - 1;
       const endSec = parseTime(getCell(row, 'end')) ?? Number(state.player?.getCurrentTime?.() || 0);
       const cloneBase = ensureRowMeta({ ...stripSearchState(row), _id: cryptoRandomId(), _sort: computeInsertSortAfter(insertAt) });
+      if (cloneBase._meta && typeof cloneBase._meta === 'object') {
+        cloneBase._meta.masks = [];
+        cloneBase._meta.masksVisible = false;
+        cloneBase._meta.activeMaskId = null;
+      }
       setCell(cloneBase, 'start', '');
       setCell(cloneBase, 'end', '');
       const clone = buildRowSearchCache(cloneBase);
@@ -2591,9 +2648,24 @@
           showToast('검색창 이동');
           return;
         }
-        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'e') {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'r') {
           e.preventDefault();
           duplicateSelectedRow();
+          return;
+        }
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'e') {
+          e.preventDefault();
+          enterPopupEdit('definition', { clearOnOpen: true });
+          return;
+        }
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+          e.preventDefault();
+          enterPopupEdit('example', { clearOnOpen: true });
+          return;
+        }
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'g') {
+          e.preventDefault();
+          enterPopupEdit('form', { clearOnOpen: true });
           return;
         }
         const tag = e.target?.tagName;
