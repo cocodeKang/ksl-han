@@ -258,17 +258,37 @@
     }
 
     .video-shell {
+      position: relative;
       border-radius: 16px;
       overflow: hidden;
       border: 1px solid rgba(148,163,184,.18);
       background: #000;
       aspect-ratio: 16 / 9;
+      isolation: isolate;
     }
 
     #player {
       width: 100%;
       height: 100%;
       min-height: 320px;
+    }
+
+    .mask-overlay {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 30%;
+      height: 18%;
+      background: rgba(0,0,0,.92);
+      border: 2px solid rgba(255,255,255,.22);
+      border-radius: 12px;
+      z-index: 5;
+      display: none;
+      pointer-events: none;
+    }
+
+    .mask-overlay.visible {
+      display: block;
     }
 
     .player-side {
@@ -295,6 +315,40 @@
       display: grid;
       grid-template-columns: repeat(2, 1fr);
       gap: 8px;
+    }
+
+    .mask-tools {
+      background: #0b1220;
+      border: 1px solid rgba(148,163,184,.18);
+      border-radius: 14px;
+      padding: 10px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .mask-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px 10px;
+    }
+
+    .mask-grid label {
+      font-size: 12px;
+      color: #cbd5e1;
+      display: grid;
+      gap: 4px;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: #38bdf8;
+    }
+
+    .result-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
     }
 
     .edit-grid {
@@ -379,6 +433,7 @@
       .range-view { grid-template-columns: 1fr; }
       .search-grid { grid-template-columns: 1fr; }
       .mini-grid { grid-template-columns: 1fr; }
+      .mask-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -441,7 +496,10 @@
             <button id="btnAddRow" class="primary">행 추가</button>
             <button id="btnDuplicateRow">행 복제</button>
             <button id="btnDeleteRow" class="danger">행 삭제</button>
-            <span class="small" id="resultCount">검색 결과 0개</span>
+            <div class="result-actions">
+              <span class="small" id="resultCount">검색 결과 0개</span>
+              <button id="btnMoreResults" class="ghost" style="display:none;">더 보기 +300</button>
+            </div>
           </div>
           <div class="table-scroll">
             <table>
@@ -465,8 +523,9 @@
         <section class="panel">
           <h2>플레이어 / 구간 캡처</h2>
           <div class="player-box">
-            <div class="video-shell">
+            <div class="video-shell" id="videoShell">
               <div id="player"></div>
+              <div id="maskOverlay" class="mask-overlay" aria-hidden="true"></div>
             </div>
             <div class="player-side">
               <div class="time-card">
@@ -483,10 +542,13 @@
                 <button id="btnLoopPreview">구간 반복 꺼짐</button>
                 <button id="btnBack5">-5초</button>
                 <button id="btnForward5">+5초</button>
+                <button id="btnToggleFullscreen">전체화면</button>
+                <button id="btnToggleMask">가림막 생성/가리기</button>
               </div>
               <div class="field">
                 <label>재생 속도</label>
                 <select id="playbackRateSelect">
+                  <option value="0.25">0.25x</option>
                   <option value="0.5">0.5x</option>
                   <option value="0.75">0.75x</option>
                   <option value="1" selected>1.0x</option>
@@ -496,8 +558,28 @@
                   <option value="2">2.0x</option>
                 </select>
               </div>
+              <div class="mask-tools">
+                <div class="small">가림막 위치와 크기</div>
+                <div class="mask-grid">
+                  <label>X
+                    <input id="maskX" type="range" min="0" max="90" step="1" value="0" />
+                  </label>
+                  <label>Y
+                    <input id="maskY" type="range" min="0" max="90" step="1" value="0" />
+                  </label>
+                  <label>가로
+                    <input id="maskWidth" type="range" min="5" max="100" step="1" value="30" />
+                  </label>
+                  <label>세로
+                    <input id="maskHeight" type="range" min="5" max="100" step="1" value="18" />
+                  </label>
+                  <label>불투명도
+                    <input id="maskOpacity" type="range" min="10" max="100" step="1" value="92" />
+                  </label>
+                </div>
+              </div>
               <div class="note">
-                링크가 바뀌면 새 영상을 자동 로드합니다. 구간 미리보기는 선택된 행의 시작~종료 시간 범위만 재생합니다.
+                링크가 바뀌면 새 영상을 자동 로드합니다. 구간 미리보기는 선택된 행의 시작~종료 시간 범위만 재생합니다. 검색은 5,000행 이상에서도 덜 버벅이도록 지연 입력 + 빠른 검색 인덱스 + 부분 렌더링으로 바꿨습니다.
               </div>
             </div>
           </div>
@@ -515,6 +597,7 @@
             <li>재생 중 원하는 시점에서 <strong>현재시간 → 시작</strong>, <strong>현재시간 → 종료</strong> 버튼으로 구간 저장</li>
             <li>필요하면 뜻풀이·용례·수형·메모를 수정한 뒤 CSV 또는 엑셀로 다운로드</li>
             <li>한 번 저장한 데이터는 브라우저 저장소에 남아서 다음 실행 때 자동 복구</li>
+            <li>단축키: F 전체화면 / [ 시작 / ] 종료 / , . 프레임 이동 / &lt; &gt; 재생속도 / Ctrl+E 행 복제</li>
           </ul>
         </section>
 
@@ -537,6 +620,8 @@
       ['한국복지대 한수 사전 한국수어1 해설 버전', 'KSL1', '885', '[다]', 'https://www.youtube.com/watch?v=JRfzyCSoemo&list=PLJhlGbiA8gN5fyT0STJzDTIcAHJHLxplt&index=885', '', '', '', '', '', '사용자 예시 링크']
     ];
 
+    const SEARCH_RENDER_CHUNK = 300;
+
     const state = {
       headers: [],
       rows: [],
@@ -548,7 +633,17 @@
       previewStopAt: null,
       currentVideoId: null,
       ytReady: false,
-      player: null
+      player: null,
+      renderLimit: SEARCH_RENDER_CHUNK,
+      filteredRowIds: [],
+      mask: {
+        visible: false,
+        x: 0,
+        y: 0,
+        width: 30,
+        height: 18,
+        opacity: 92
+      }
     };
 
     const $ = (sel) => document.querySelector(sel);
@@ -572,6 +667,22 @@
 
     function canonicalTrim(v) {
       return String(v ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+    }
+
+    function buildRowSearchCache(row) {
+      row._search = {
+        headword: normalizeForSearch(getCell(row, 'headword')),
+        example: normalizeForSearch(getCell(row, 'example')),
+        link: normalizeForSearch(getCell(row, 'link')),
+        definition: normalizeForSearch(getCell(row, 'definition'))
+      };
+      row._search.all = [row._search.headword, row._search.example, row._search.link, row._search.definition].join('\n');
+      return row;
+    }
+
+    function rebuildSearchIndex(rows = state.rows) {
+      rows.forEach(buildRowSearchCache);
+      applySearchFilter();
     }
 
     function ensureColumns(headers) {
@@ -599,6 +710,7 @@
         headers.forEach((h, idx) => {
           obj[h.key] = arr[idx] == null ? '' : String(arr[idx]);
         });
+        buildRowSearchCache(obj);
         rows.push(obj);
       }
       return { headers, rows };
@@ -663,8 +775,8 @@
         if (!raw) return false;
         const parsed = JSON.parse(raw);
         if (!parsed || !Array.isArray(parsed.headers) || !Array.isArray(parsed.rows)) return false;
-        state.headers = parsed.headers;
-        state.rows = parsed.rows;
+        state.headers = ensureColumns(parsed.headers);
+        state.rows = parsed.rows.map(r => buildRowSearchCache({ ...r, _id: r._id || cryptoRandomId() }));
         state.sourceName = parsed.sourceName || '브라우저 저장본';
         if (state.rows.length) state.selectedRowId = state.rows[0]._id;
         return true;
@@ -705,31 +817,44 @@
       return String(v ?? '').toLowerCase();
     }
 
-    function getFilteredRows() {
+    function applySearchFilter() {
       const q = state.query.trim().toLowerCase();
-      if (!q) return state.rows;
-      return state.rows.filter(row => {
-        const headword = normalizeForSearch(getCell(row, 'headword'));
-        const example = normalizeForSearch(getCell(row, 'example'));
-        const link = normalizeForSearch(getCell(row, 'link'));
-        const definition = normalizeForSearch(getCell(row, 'definition'));
-        switch (state.scope) {
-          case 'headword': return headword.includes(q);
-          case 'example': return example.includes(q);
-          case 'link': return link.includes(q);
-          default: return [headword, example, link, definition].some(v => v.includes(q));
-        }
-      });
+      if (!q) {
+        state.filteredRowIds = state.rows.map(row => row._id);
+        return state.filteredRowIds;
+      }
+      state.filteredRowIds = state.rows
+        .filter(row => {
+          const cache = row._search || buildRowSearchCache(row)._search;
+          switch (state.scope) {
+            case 'headword': return cache.headword.includes(q);
+            case 'example': return cache.example.includes(q);
+            case 'link': return cache.link.includes(q);
+            default: return cache.all.includes(q);
+          }
+        })
+        .map(row => row._id);
+      return state.filteredRowIds;
+    }
+
+    function getFilteredRows() {
+      if (!state.filteredRowIds.length && state.rows.length) applySearchFilter();
+      const idSet = new Set(state.filteredRowIds);
+      return state.rows.filter(row => idSet.has(row._id));
     }
 
     function renderRows() {
       const filtered = getFilteredRows();
-      $('#resultCount').textContent = `검색 결과 ${filtered.length}개`;
+      const visible = filtered.slice(0, state.renderLimit);
+      $('#resultCount').textContent = filtered.length > visible.length
+        ? `검색 결과 ${filtered.length}개 · 현재 ${visible.length}개 표시`
+        : `검색 결과 ${filtered.length}개`;
+      $('#btnMoreResults').style.display = filtered.length > visible.length ? 'inline-flex' : 'none';
       if (!filtered.length) {
         rowsTbody.innerHTML = `<tr><td colspan="6" class="muted">검색 결과가 없습니다.</td></tr>`;
         return;
       }
-      rowsTbody.innerHTML = filtered.map(row => {
+      rowsTbody.innerHTML = visible.map(row => {
         const selected = row._id === state.selectedRowId ? 'selected' : '';
         return `
           <tr class="${selected}" data-row-id="${escapeHtml(row._id)}">
@@ -742,14 +867,6 @@
           </tr>
         `;
       }).join('');
-      [...rowsTbody.querySelectorAll('tr[data-row-id]')].forEach(tr => {
-        tr.addEventListener('click', () => {
-          state.selectedRowId = tr.dataset.rowId;
-          renderRows();
-          renderEditor();
-          loadSelectedRowToPlayer();
-        });
-      });
     }
 
     function getSelectedRow() {
@@ -838,11 +955,14 @@
     let refreshTimer = null;
     function queueLightRefresh() {
       updateRangeCards(getSelectedRow());
+      const row = getSelectedRow();
+      if (row) buildRowSearchCache(row);
       if (refreshTimer) clearTimeout(refreshTimer);
       refreshTimer = setTimeout(() => {
+        applySearchFilter();
         renderRows();
         saveStateToLocalStorage(state.sourceName || '브라우저 저장본');
-      }, 250);
+      }, 180);
     }
 
     function parseTime(input) {
@@ -971,6 +1091,109 @@
       state.player.seekTo(sec, true);
     }
 
+    function scheduleSearchRender() {
+      state.renderLimit = SEARCH_RENDER_CHUNK;
+      if (window.__searchDebounceTimer) clearTimeout(window.__searchDebounceTimer);
+      window.__searchDebounceTimer = setTimeout(() => {
+        applySearchFilter();
+        renderRows();
+      }, 120);
+    }
+
+    function loadMoreRows() {
+      state.renderLimit += SEARCH_RENDER_CHUNK;
+      renderRows();
+    }
+
+    function getPlaybackRate() {
+      if (!state.player || !state.ytReady) return Number($('#playbackRateSelect').value || 1);
+      try { return Number(state.player.getPlaybackRate?.() || $('#playbackRateSelect').value || 1); }
+      catch { return Number($('#playbackRateSelect').value || 1); }
+    }
+
+    function setPlaybackRate(rate) {
+      const safe = Math.max(0.25, Math.min(2, Math.round(rate * 100) / 100));
+      $('#playbackRateSelect').value = String(safe);
+      if (!state.player || !state.ytReady) return safe;
+      try { state.player.setPlaybackRate(safe); } catch (err) {}
+      return safe;
+    }
+
+    function adjustPlaybackRate(delta) {
+      const rates = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+      const current = getPlaybackRate();
+      let idx = rates.findIndex(r => Math.abs(r - current) < 0.001);
+      if (idx < 0) idx = rates.findIndex(r => r > current);
+      if (idx < 0) idx = rates.length - 1;
+      const nextIdx = Math.max(0, Math.min(rates.length - 1, idx + delta));
+      const next = setPlaybackRate(rates[nextIdx]);
+      setStatus(`재생 속도 ${next.toFixed(2).replace(/\.00$/, '.0')}x`);
+    }
+
+    function stepFrame(direction = 1) {
+      if (!state.player || !state.ytReady) return;
+      const now = Number(state.player.getCurrentTime?.() || 0);
+      const next = Math.max(0, now + (direction * (1 / 30)));
+      state.player.seekTo(next, true);
+      state.player.pauseVideo();
+    }
+
+    function toggleFullscreen() {
+      const target = $('#videoShell');
+      if (!target) return;
+      if (document.fullscreenElement) {
+        document.exitFullscreen?.();
+      } else {
+        target.requestFullscreen?.();
+      }
+    }
+
+    function applyMaskStyle() {
+      const mask = state.mask;
+      const el = $('#maskOverlay');
+      if (!el) return;
+      const maxX = Math.max(0, 100 - mask.width);
+      const maxY = Math.max(0, 100 - mask.height);
+      mask.x = Math.max(0, Math.min(mask.x, maxX));
+      mask.y = Math.max(0, Math.min(mask.y, maxY));
+      el.style.left = `${mask.x}%`;
+      el.style.top = `${mask.y}%`;
+      el.style.width = `${mask.width}%`;
+      el.style.height = `${mask.height}%`;
+      el.style.background = `rgba(0,0,0,${Math.max(0.1, Math.min(1, mask.opacity / 100))})`;
+      el.classList.toggle('visible', !!mask.visible);
+      $('#btnToggleMask').classList.toggle('active', !!mask.visible);
+    }
+
+    function syncMaskUI() {
+      $('#maskX').value = String(state.mask.x);
+      $('#maskY').value = String(state.mask.y);
+      $('#maskWidth').value = String(state.mask.width);
+      $('#maskHeight').value = String(state.mask.height);
+      $('#maskOpacity').value = String(state.mask.opacity);
+      applyMaskStyle();
+    }
+
+    function toggleMask() {
+      state.mask.visible = !state.mask.visible;
+      applyMaskStyle();
+    }
+
+    function bindMaskInputs() {
+      ['maskX', 'maskY', 'maskWidth', 'maskHeight', 'maskOpacity'].forEach(id => {
+        const el = $('#' + id);
+        if (!el) return;
+        el.addEventListener('input', () => {
+          state.mask.x = Number($('#maskX').value || 0);
+          state.mask.y = Number($('#maskY').value || 0);
+          state.mask.width = Number($('#maskWidth').value || 30);
+          state.mask.height = Number($('#maskHeight').value || 18);
+          state.mask.opacity = Number($('#maskOpacity').value || 92);
+          applyMaskStyle();
+        });
+      });
+    }
+
     function exportWorkbook(kind) {
       if (!state.headers.length) {
         setStatus('내보낼 데이터가 없습니다.', true);
@@ -1018,7 +1241,7 @@
           const parsed = JSON.parse(text);
           if (!Array.isArray(parsed.headers) || !Array.isArray(parsed.rows)) throw new Error('JSON 형식이 올바르지 않습니다.');
           state.headers = ensureColumns(parsed.headers);
-          state.rows = parsed.rows.map(r => ({ _id: r._id || cryptoRandomId(), ...r }));
+          state.rows = parsed.rows.map(r => buildRowSearchCache({ ...r, _id: r._id || cryptoRandomId() }));
         } else {
           const data = await file.arrayBuffer();
           const wb = XLSX.read(data, { type: 'array' });
@@ -1028,6 +1251,8 @@
           state.headers = built.headers;
           state.rows = built.rows;
         }
+        rebuildSearchIndex(state.rows);
+        state.renderLimit = SEARCH_RENDER_CHUNK;
         state.sourceName = `파일: ${file.name}`;
         state.selectedRowId = state.rows[0]?._id || null;
         renderAll();
@@ -1043,8 +1268,11 @@
       const built = createRowsFromAoa([sampleHeaders, ...sampleRows]);
       state.headers = built.headers;
       state.rows = built.rows;
+      rebuildSearchIndex(state.rows);
+      state.renderLimit = SEARCH_RENDER_CHUNK;
       state.sourceName = '샘플 데이터';
       state.selectedRowId = state.rows[0]?._id || null;
+      applySearchFilter();
       renderAll();
       saveStateToLocalStorage('샘플 데이터');
       setStatus('샘플 데이터를 불러왔습니다. 바로 테스트해 보세요.');
@@ -1059,8 +1287,10 @@
       state.headers.forEach(h => row[h.key] = '');
       const numberKey = getFieldKey('number');
       if (numberKey) row[numberKey] = String(state.rows.length + 1);
+      buildRowSearchCache(row);
       state.rows.unshift(row);
       state.selectedRowId = row._id;
+      applySearchFilter();
       renderAll();
       saveStateToLocalStorage(state.sourceName || '브라우저 저장본');
     }
@@ -1068,9 +1298,10 @@
     function duplicateSelectedRow() {
       const row = getSelectedRow();
       if (!row) return;
-      const clone = { ...row, _id: cryptoRandomId() };
+      const clone = buildRowSearchCache({ ...row, _id: cryptoRandomId() });
       state.rows.unshift(clone);
       state.selectedRowId = clone._id;
+      applySearchFilter();
       renderAll();
       saveStateToLocalStorage(state.sourceName || '브라우저 저장본');
       setStatus('선택 행을 복제했습니다.');
@@ -1090,8 +1321,10 @@
 
     function renderAll() {
       updateTopInfo();
+      applySearchFilter();
       renderRows();
       renderEditor();
+      syncMaskUI();
       const row = getSelectedRow();
       if (row) loadSelectedRowToPlayer();
     }
@@ -1114,20 +1347,34 @@
       $('#btnExportJson').onclick = () => exportWorkbook('json');
       $('#searchInput').addEventListener('input', (e) => {
         state.query = e.target.value;
-        renderRows();
+        scheduleSearchRender();
       });
       $('#btnClearSearch').onclick = () => {
         state.query = '';
+        state.renderLimit = SEARCH_RENDER_CHUNK;
         $('#searchInput').value = '';
+        applySearchFilter();
         renderRows();
       };
       [...$('#scopeRow').querySelectorAll('button[data-scope]')].forEach(btn => {
         btn.addEventListener('click', () => {
           state.scope = btn.dataset.scope;
+          state.renderLimit = SEARCH_RENDER_CHUNK;
           [...$('#scopeRow').querySelectorAll('button')].forEach(b => b.classList.remove('active'));
           btn.classList.add('active');
+          applySearchFilter();
           renderRows();
         });
+      });
+      $('#btnMoreResults').onclick = loadMoreRows;
+
+      rowsTbody.addEventListener('click', (e) => {
+        const tr = e.target.closest('tr[data-row-id]');
+        if (!tr) return;
+        state.selectedRowId = tr.dataset.rowId;
+        renderRows();
+        renderEditor();
+        loadSelectedRowToPlayer();
       });
 
       $('#btnAddRow').onclick = addRow;
@@ -1154,10 +1401,11 @@
         state.player.seekTo(now + 5, true);
       };
       $('#playbackRateSelect').addEventListener('change', (e) => {
-        if (!state.player || !state.ytReady) return;
-        const rate = Number(e.target.value || 1);
-        try { state.player.setPlaybackRate(rate); } catch (err) {}
+        setPlaybackRate(Number(e.target.value || 1));
       });
+      $('#btnToggleFullscreen').onclick = toggleFullscreen;
+      $('#btnToggleMask').onclick = toggleMask;
+      bindMaskInputs();
 
       document.addEventListener('keydown', (e) => {
         if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
@@ -1166,10 +1414,22 @@
           setStatus('브라우저 저장 완료');
           return;
         }
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'e') {
+          e.preventDefault();
+          duplicateSelectedRow();
+          return;
+        }
         if (e.target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
-        if (e.key === 's' || e.key === 'S') { e.preventDefault(); setSelectedTime('start'); }
-        if (e.key === 'e' || e.key === 'E') { e.preventDefault(); setSelectedTime('end'); }
-        if (e.key === 'p' || e.key === 'P') { e.preventDefault(); startPreview(state.loopPreview); }
+
+        if (e.key === '[') { e.preventDefault(); setSelectedTime('start'); return; }
+        if (e.key === ']') { e.preventDefault(); setSelectedTime('end'); return; }
+        if (e.key === 'p' || e.key === 'P') { e.preventDefault(); startPreview(state.loopPreview); return; }
+        if (e.key === 'f' || e.key === 'F') { e.preventDefault(); toggleFullscreen(); return; }
+
+        if ((e.key === ',' || e.code === 'Comma') && !e.shiftKey) { e.preventDefault(); stepFrame(-1); return; }
+        if ((e.key === '.' || e.code === 'Period') && !e.shiftKey) { e.preventDefault(); stepFrame(1); return; }
+        if (e.key === '<' || ((e.key === ',' || e.code === 'Comma') && e.shiftKey)) { e.preventDefault(); adjustPlaybackRate(-1); return; }
+        if (e.key === '>' || ((e.key === '.' || e.code === 'Period') && e.shiftKey)) { e.preventDefault(); adjustPlaybackRate(1); return; }
       });
     }
 
@@ -1212,8 +1472,10 @@
 
     function init() {
       bindEvents();
+      syncMaskUI();
       const restored = loadStateFromLocalStorage();
       if (restored) {
+        rebuildSearchIndex(state.rows);
         renderAll();
         setStatus('브라우저 저장본을 자동으로 복구했습니다.');
       } else {
