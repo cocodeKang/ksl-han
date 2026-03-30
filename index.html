@@ -273,6 +273,14 @@
       min-height: 320px;
     }
 
+    #player iframe,
+    .video-shell iframe {
+      width: 100% !important;
+      height: 100% !important;
+      display: block;
+      border: 0;
+    }
+
     .mask-overlay {
       position: absolute;
       left: 0;
@@ -289,6 +297,69 @@
 
     .mask-overlay.visible {
       display: block;
+    }
+
+    .text-popup {
+      position: absolute;
+      right: 14px;
+      top: 14px;
+      width: min(420px, calc(100% - 28px));
+      z-index: 8;
+      display: none;
+    }
+
+    .text-popup.visible {
+      display: block;
+    }
+
+    .popup-card {
+      background: rgba(15, 23, 42, .92);
+      border: 1px solid rgba(148,163,184,.24);
+      border-radius: 16px;
+      box-shadow: 0 16px 40px rgba(0,0,0,.35);
+      overflow: hidden;
+      backdrop-filter: blur(10px);
+    }
+
+    .popup-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px 14px;
+      border-bottom: 1px solid rgba(148,163,184,.14);
+      background: rgba(11, 18, 32, .75);
+    }
+
+    .popup-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #e2e8f0;
+    }
+
+    .popup-body {
+      padding: 14px;
+      white-space: pre-wrap;
+      line-height: 1.7;
+      font-size: 15px;
+      max-height: 40vh;
+      overflow: auto;
+    }
+
+    .popup-body.editing {
+      padding: 12px;
+    }
+
+    .popup-body textarea {
+      min-height: 150px;
+      resize: vertical;
+    }
+
+    .popup-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 0 14px 14px;
     }
 
     .player-side {
@@ -526,6 +597,7 @@
             <div class="video-shell" id="videoShell">
               <div id="player"></div>
               <div id="maskOverlay" class="mask-overlay" aria-hidden="true"></div>
+              <div id="textPopup" class="text-popup" aria-hidden="true"></div>
             </div>
             <div class="player-side">
               <div class="time-card">
@@ -542,8 +614,12 @@
                 <button id="btnLoopPreview">구간 반복 꺼짐</button>
                 <button id="btnBack5">-5초</button>
                 <button id="btnForward5">+5초</button>
-                <button id="btnToggleFullscreen">전체화면</button>
-                <button id="btnToggleMask">가림막 생성/가리기</button>
+                <button id="btnToggleFullscreen">전체화면 (F)</button>
+                <button id="btnToggleMask">가림막 생성/가리기 (X)</button>
+                <button id="btnRemoveMask">가림막 삭제</button>
+                <button id="btnShowHeadword">표제어 팝업 (Q)</button>
+                <button id="btnShowDefinition">뜻풀이 팝업 (E)</button>
+                <button id="btnShowExample">용례 팝업/편집 (A)</button>
               </div>
               <div class="field">
                 <label>재생 속도</label>
@@ -597,7 +673,7 @@
             <li>재생 중 원하는 시점에서 <strong>현재시간 → 시작</strong>, <strong>현재시간 → 종료</strong> 버튼으로 구간 저장</li>
             <li>필요하면 뜻풀이·용례·수형·메모를 수정한 뒤 CSV 또는 엑셀로 다운로드</li>
             <li>한 번 저장한 데이터는 브라우저 저장소에 남아서 다음 실행 때 자동 복구</li>
-            <li>단축키: F 전체화면 / [ 시작 / ] 종료 / , . 프레임 이동 / &lt; &gt; 재생속도 / Ctrl+E 행 복제</li>
+            <li>단축키: F 전체화면 / [ 시작 / ] 종료 / , . 프레임 이동 / &lt; &gt; 재생속도 / X 가림막 / Q 표제어 / E 뜻풀이 / A 용례 팝업 / 0~9 재생 위치 이동 / Ctrl+E 행 복제</li>
           </ul>
         </section>
 
@@ -636,6 +712,7 @@
       player: null,
       renderLimit: SEARCH_RENDER_CHUNK,
       filteredRowIds: [],
+      filteredRows: [],
       mask: {
         visible: false,
         x: 0,
@@ -643,6 +720,11 @@
         width: 30,
         height: 18,
         opacity: 92
+      },
+      overlay: {
+        visible: false,
+        type: null,
+        editMode: false
       }
     };
 
@@ -756,7 +838,8 @@
         const payload = {
           headers: state.headers,
           rows: state.rows,
-          sourceName: sourceLabel || state.sourceName || '브라우저 저장본'
+          sourceName: sourceLabel || state.sourceName || '브라우저 저장본',
+          mask: { ...state.mask }
         };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
         localStorage.setItem(SAVE_TS_KEY, String(Date.now()));
@@ -778,6 +861,16 @@
         state.headers = ensureColumns(parsed.headers);
         state.rows = parsed.rows.map(r => buildRowSearchCache({ ...r, _id: r._id || cryptoRandomId() }));
         state.sourceName = parsed.sourceName || '브라우저 저장본';
+        if (parsed.mask && typeof parsed.mask === 'object') {
+          state.mask = {
+            visible: !!parsed.mask.visible,
+            x: Number(parsed.mask.x ?? 0),
+            y: Number(parsed.mask.y ?? 0),
+            width: Number(parsed.mask.width ?? 30),
+            height: Number(parsed.mask.height ?? 18),
+            opacity: Number(parsed.mask.opacity ?? 92)
+          };
+        }
         if (state.rows.length) state.selectedRowId = state.rows[0]._id;
         return true;
       } catch (err) {
@@ -820,27 +913,161 @@
     function applySearchFilter() {
       const q = state.query.trim().toLowerCase();
       if (!q) {
-        state.filteredRowIds = state.rows.map(row => row._id);
+        state.filteredRows = state.rows.slice();
+        state.filteredRowIds = state.filteredRows.map(row => row._id);
         return state.filteredRowIds;
       }
-      state.filteredRowIds = state.rows
-        .filter(row => {
-          const cache = row._search || buildRowSearchCache(row)._search;
-          switch (state.scope) {
-            case 'headword': return cache.headword.includes(q);
-            case 'example': return cache.example.includes(q);
-            case 'link': return cache.link.includes(q);
-            default: return cache.all.includes(q);
-          }
-        })
-        .map(row => row._id);
+      state.filteredRows = state.rows.filter(row => {
+        const cache = row._search || buildRowSearchCache(row)._search;
+        switch (state.scope) {
+          case 'headword': return cache.headword.includes(q);
+          case 'example': return cache.example.includes(q);
+          case 'link': return cache.link.includes(q);
+          default: return cache.all.includes(q);
+        }
+      });
+      state.filteredRowIds = state.filteredRows.map(row => row._id);
       return state.filteredRowIds;
     }
 
     function getFilteredRows() {
-      if (!state.filteredRowIds.length && state.rows.length) applySearchFilter();
-      const idSet = new Set(state.filteredRowIds);
-      return state.rows.filter(row => idSet.has(row._id));
+      if (!Array.isArray(state.filteredRows) || (!state.filteredRows.length && state.rows.length && (!state.query || state.filteredRowIds.length))) {
+        applySearchFilter();
+      }
+      return state.filteredRows || [];
+    }
+
+
+    function getOverlayFieldInfo(type) {
+      const row = getSelectedRow();
+      if (!row || !type) return null;
+      const labelMap = { headword: '표제어', definition: '뜻풀이', example: '용례' };
+      const value = getCell(row, type) || '';
+      return {
+        row,
+        type,
+        label: labelMap[type] || type,
+        value
+      };
+    }
+
+    function closeTextPopup() {
+      state.overlay.visible = false;
+      state.overlay.type = null;
+      state.overlay.editMode = false;
+      renderTextPopup();
+    }
+
+    function openTextPopup(type, editMode = false) {
+      const info = getOverlayFieldInfo(type);
+      if (!info) return;
+      state.overlay.visible = true;
+      state.overlay.type = type;
+      state.overlay.editMode = !!editMode;
+      renderTextPopup();
+    }
+
+    function toggleTextPopup(type) {
+      if (type === 'example') {
+        if (!state.overlay.visible || state.overlay.type !== 'example') {
+          openTextPopup('example', false);
+          return;
+        }
+        if (!state.overlay.editMode) {
+          openTextPopup('example', true);
+          setTimeout(() => $('#popupEditor')?.focus(), 0);
+          return;
+        }
+        closeTextPopup();
+        return;
+      }
+      if (state.overlay.visible && state.overlay.type === type) {
+        closeTextPopup();
+      } else {
+        openTextPopup(type, false);
+      }
+    }
+
+    function saveOverlayEdit(closeAfter = false) {
+      const info = getOverlayFieldInfo(state.overlay.type);
+      const editor = $('#popupEditor');
+      if (!info || !editor) return;
+      setCell(info.row, info.type, editor.value);
+      if (info.type === 'example') {
+        const exKey = getFieldKey('example');
+        const exInput = exKey ? editorArea.querySelector(`[data-bind-key="${CSS.escape(exKey)}"]`) : null;
+        if (exInput) exInput.value = editor.value;
+      }
+      buildRowSearchCache(info.row);
+      queueLightRefresh();
+      state.overlay.editMode = false;
+      renderTextPopup();
+      setStatus(`${info.label} 내용을 저장했습니다.`);
+      if (closeAfter) closeTextPopup();
+    }
+
+    function renderTextPopup() {
+      const el = $('#textPopup');
+      if (!el) return;
+      const info = getOverlayFieldInfo(state.overlay.type);
+      if (!state.overlay.visible || !info) {
+        el.classList.remove('visible');
+        el.setAttribute('aria-hidden', 'true');
+        el.innerHTML = '';
+        return;
+      }
+      const currentValue = info.value || '';
+      const hint = info.type === 'example'
+        ? (state.overlay.editMode ? 'Enter 저장 · Shift+Enter 줄바꿈 · Esc 닫기' : 'A 다시 누르면 편집')
+        : 'Esc 닫기';
+      el.classList.add('visible');
+      el.setAttribute('aria-hidden', 'false');
+      el.innerHTML = `
+        <div class="popup-card">
+          <div class="popup-head">
+            <div>
+              <div class="popup-title">${escapeHtml(info.label)} 팝업</div>
+              <div class="small">${escapeHtml(getCell(info.row, 'headword') || '')} · ${escapeHtml(hint)}</div>
+            </div>
+            <div class="control-row">
+              ${info.type === 'example' && !state.overlay.editMode ? '<button id="btnPopupEdit">편집</button>' : ''}
+              ${info.type === 'example' && state.overlay.editMode ? '<button id="btnPopupSave" class="primary">저장</button>' : ''}
+              <button id="btnPopupClose" class="ghost">닫기</button>
+            </div>
+          </div>
+          <div class="popup-body ${state.overlay.editMode ? 'editing' : ''}">
+            ${state.overlay.editMode
+              ? `<textarea id="popupEditor">${escapeHtml(currentValue)}</textarea>`
+              : `${escapeHtml(currentValue || '(내용 없음)')}`}
+          </div>
+          ${info.type === 'example' && state.overlay.editMode ? '<div class="popup-actions"><button id="btnPopupSaveBottom" class="primary">Enter로 저장</button><button id="btnPopupCancelEdit">편집 취소</button></div>' : ''}
+        </div>
+      `;
+      $('#btnPopupClose')?.addEventListener('click', closeTextPopup);
+      $('#btnPopupEdit')?.addEventListener('click', () => {
+        state.overlay.editMode = true;
+        renderTextPopup();
+        setTimeout(() => $('#popupEditor')?.focus(), 0);
+      });
+      $('#btnPopupSave')?.addEventListener('click', () => saveOverlayEdit(false));
+      $('#btnPopupSaveBottom')?.addEventListener('click', () => saveOverlayEdit(false));
+      $('#btnPopupCancelEdit')?.addEventListener('click', () => {
+        state.overlay.editMode = false;
+        renderTextPopup();
+      });
+      const popupEditor = $('#popupEditor');
+      if (popupEditor) {
+        popupEditor.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            saveOverlayEdit(false);
+          }
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            closeTextPopup();
+          }
+        });
+      }
     }
 
     function renderRows() {
@@ -879,6 +1106,7 @@
         editorEmpty.style.display = 'block';
         editorArea.style.display = 'none';
         updateRangeCards(null);
+        renderTextPopup();
         return;
       }
       editorEmpty.style.display = 'none';
@@ -936,6 +1164,7 @@
         loadSelectedRowToPlayer(true, true);
       };
       updateRangeCards(row);
+      renderTextPopup();
     }
 
     function renderField(row, field) {
@@ -961,6 +1190,7 @@
       refreshTimer = setTimeout(() => {
         applySearchFilter();
         renderRows();
+        renderTextPopup();
         saveStateToLocalStorage(state.sourceName || '브라우저 저장본');
       }, 180);
     }
@@ -1026,9 +1256,23 @@
     function loadVideo(videoId, startSec = null, autoPlay = false) {
       if (!videoId || !state.player || !state.ytReady) return;
       state.currentVideoId = videoId;
-      const opts = { videoId, startSeconds: startSec ?? 0 };
-      if (autoPlay) state.player.loadVideoById(opts);
-      else state.player.cueVideoById(opts);
+      const start = Math.max(0, Number(startSec || 0));
+      try {
+        if (autoPlay) state.player.loadVideoById(videoId, start);
+        else state.player.cueVideoById(videoId, start);
+      } catch (err) {
+        try {
+          const opts = { videoId, startSeconds: start };
+          if (autoPlay) state.player.loadVideoById(opts);
+          else state.player.cueVideoById(opts);
+        } catch (innerErr) {
+          console.error(innerErr);
+        }
+      }
+      setTimeout(() => {
+        const iframe = document.querySelector('#player iframe');
+        if (iframe) iframe.setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share');
+      }, 50);
       $('#currentVideoText').textContent = `영상 ID: ${videoId}`;
     }
 
@@ -1174,9 +1418,26 @@
       applyMaskStyle();
     }
 
+    function persistMask() {
+      saveStateToLocalStorage(state.sourceName || '브라우저 저장본');
+    }
+
     function toggleMask() {
       state.mask.visible = !state.mask.visible;
       applyMaskStyle();
+      persistMask();
+    }
+
+    function removeMask() {
+      state.mask.visible = false;
+      state.mask.x = 0;
+      state.mask.y = 0;
+      state.mask.width = 30;
+      state.mask.height = 18;
+      state.mask.opacity = 92;
+      syncMaskUI();
+      persistMask();
+      setStatus('가림막을 삭제하고 기본 위치로 되돌렸습니다.');
     }
 
     function bindMaskInputs() {
@@ -1190,6 +1451,7 @@
           state.mask.height = Number($('#maskHeight').value || 18);
           state.mask.opacity = Number($('#maskOpacity').value || 92);
           applyMaskStyle();
+          persistMask();
         });
       });
     }
@@ -1204,7 +1466,7 @@
         aoa.push(state.headers.map(h => row[h.key] ?? ''));
       });
       if (kind === 'json') {
-        const blob = new Blob([JSON.stringify({ headers: state.headers, rows: state.rows }, null, 2)], { type: 'application/json;charset=utf-8' });
+        const blob = new Blob([JSON.stringify({ headers: state.headers, rows: state.rows, sourceName: state.sourceName, mask: state.mask }, null, 2)], { type: 'application/json;charset=utf-8' });
         downloadBlob(blob, fileBaseName() + '.json');
         return;
       }
@@ -1242,6 +1504,16 @@
           if (!Array.isArray(parsed.headers) || !Array.isArray(parsed.rows)) throw new Error('JSON 형식이 올바르지 않습니다.');
           state.headers = ensureColumns(parsed.headers);
           state.rows = parsed.rows.map(r => buildRowSearchCache({ ...r, _id: r._id || cryptoRandomId() }));
+          if (parsed.mask && typeof parsed.mask === 'object') {
+            state.mask = {
+              visible: !!parsed.mask.visible,
+              x: Number(parsed.mask.x ?? 0),
+              y: Number(parsed.mask.y ?? 0),
+              width: Number(parsed.mask.width ?? 30),
+              height: Number(parsed.mask.height ?? 18),
+              opacity: Number(parsed.mask.opacity ?? 92)
+            };
+          }
         } else {
           const data = await file.arrayBuffer();
           const wb = XLSX.read(data, { type: 'array' });
@@ -1325,6 +1597,7 @@
       renderRows();
       renderEditor();
       syncMaskUI();
+      renderTextPopup();
       const row = getSelectedRow();
       if (row) loadSelectedRowToPlayer();
     }
@@ -1405,6 +1678,10 @@
       });
       $('#btnToggleFullscreen').onclick = toggleFullscreen;
       $('#btnToggleMask').onclick = toggleMask;
+      $('#btnRemoveMask').onclick = removeMask;
+      $('#btnShowHeadword').onclick = () => toggleTextPopup('headword');
+      $('#btnShowDefinition').onclick = () => toggleTextPopup('definition');
+      $('#btnShowExample').onclick = () => toggleTextPopup('example');
       bindMaskInputs();
 
       document.addEventListener('keydown', (e) => {
@@ -1419,12 +1696,37 @@
           duplicateSelectedRow();
           return;
         }
-        if (e.target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+        const tag = e.target?.tagName;
+        const inField = !!(e.target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(tag));
+        if (inField) {
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            closeTextPopup();
+          }
+          return;
+        }
 
         if (e.key === '[') { e.preventDefault(); setSelectedTime('start'); return; }
         if (e.key === ']') { e.preventDefault(); setSelectedTime('end'); return; }
         if (e.key === 'p' || e.key === 'P') { e.preventDefault(); startPreview(state.loopPreview); return; }
         if (e.key === 'f' || e.key === 'F') { e.preventDefault(); toggleFullscreen(); return; }
+        if (e.key === 'x' || e.key === 'X') { e.preventDefault(); toggleMask(); return; }
+        if (e.key === 'q' || e.key === 'Q') { e.preventDefault(); toggleTextPopup('headword'); return; }
+        if (e.key === 'a' || e.key === 'A') { e.preventDefault(); toggleTextPopup('example'); return; }
+        if (e.key === 'e' || e.key === 'E') { e.preventDefault(); toggleTextPopup('definition'); return; }
+        if (e.key === 'Escape') { e.preventDefault(); closeTextPopup(); return; }
+
+        if (/^[0-9]$/.test(e.key)) {
+          e.preventDefault();
+          if (state.player && state.ytReady) {
+            const duration = Number(state.player.getDuration?.() || 0);
+            if (duration > 0) {
+              const ratio = e.key === '0' ? 0 : Number(e.key) / 10;
+              state.player.seekTo(duration * ratio, true);
+            }
+          }
+          return;
+        }
 
         if ((e.key === ',' || e.code === 'Comma') && !e.shiftKey) { e.preventDefault(); stepFrame(-1); return; }
         if ((e.key === '.' || e.code === 'Period') && !e.shiftKey) { e.preventDefault(); stepFrame(1); return; }
@@ -1433,24 +1735,38 @@
       });
     }
 
-    window.onYouTubeIframeAPIReady = function() {
+    function initYouTubePlayer() {
+      if (state.player || !window.YT || !YT.Player) return;
       state.player = new YT.Player('player', {
+        width: '100%',
+        height: '100%',
         videoId: '',
         playerVars: {
           autoplay: 0,
           controls: 1,
           rel: 0,
-          modestbranding: 1
+          modestbranding: 1,
+          playsinline: 1
         },
         events: {
           onReady: () => {
             state.ytReady = true;
+            const iframe = document.querySelector('#player iframe');
+            if (iframe) iframe.setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share');
             const row = getSelectedRow();
-            if (row) loadSelectedRowToPlayer();
+            if (row) loadSelectedRowToPlayer(true);
+          },
+          onError: (event) => {
+            console.error('YouTube player error:', event?.data);
+            setStatus('유튜브 플레이어 로드 중 오류가 발생했습니다. 링크를 다시 선택하거나 새로고침해 주세요.', true);
           },
           onStateChange: () => {}
         }
       });
+    }
+
+    window.onYouTubeIframeAPIReady = function() {
+      initYouTubePlayer();
     };
 
     setInterval(() => {
@@ -1480,6 +1796,20 @@
         setStatus('브라우저 저장본을 자동으로 복구했습니다.');
       } else {
         loadSample();
+      }
+      if (window.YT && YT.Player) initYouTubePlayer();
+      else {
+        let tries = 0;
+        const timer = setInterval(() => {
+          tries += 1;
+          if (window.YT && YT.Player) {
+            clearInterval(timer);
+            initYouTubePlayer();
+          } else if (tries > 80) {
+            clearInterval(timer);
+            setStatus('유튜브 플레이어 스크립트를 아직 불러오지 못했습니다. 인터넷 연결 상태를 확인해 주세요.', true);
+          }
+        }, 250);
       }
     }
 
