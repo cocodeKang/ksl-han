@@ -1,0 +1,1227 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>유튜브 용례 구간 편집기</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://www.youtube.com/iframe_api"></script>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --panel2: #1f2937;
+      --line: #334155;
+      --text: #e5e7eb;
+      --muted: #94a3b8;
+      --accent: #22c55e;
+      --accent2: #38bdf8;
+      --danger: #ef4444;
+      --warn: #f59e0b;
+      --chip: #0b1220;
+      --shadow: 0 12px 30px rgba(0,0,0,.25);
+      --radius: 16px;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+      background: linear-gradient(180deg, #0b1120, #111827 40%, #0f172a);
+      color: var(--text);
+    }
+
+    .app {
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+      min-height: 100vh;
+      gap: 12px;
+      padding: 14px;
+    }
+
+    .topbar, .toolbar, .panel {
+      background: rgba(17, 24, 39, .92);
+      border: 1px solid rgba(148, 163, 184, .18);
+      box-shadow: var(--shadow);
+      border-radius: var(--radius);
+      backdrop-filter: blur(12px);
+    }
+
+    .topbar {
+      padding: 16px 18px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 22px;
+      line-height: 1.2;
+    }
+
+    .sub {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .pill-row, .control-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .toolbar {
+      padding: 12px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .main {
+      display: grid;
+      grid-template-columns: 460px minmax(500px, 1fr);
+      gap: 12px;
+      min-height: 0;
+    }
+
+    .left, .right {
+      min-height: 0;
+      display: grid;
+      gap: 12px;
+    }
+
+    .left {
+      grid-template-rows: auto 1fr;
+    }
+
+    .right {
+      grid-template-rows: auto auto 1fr;
+    }
+
+    .panel {
+      padding: 12px;
+      min-height: 0;
+    }
+
+    .panel h2 {
+      margin: 0 0 10px;
+      font-size: 16px;
+    }
+
+    button, .btn, select, input[type="text"], input[type="search"], input[type="number"], textarea {
+      font: inherit;
+      border-radius: 12px;
+      border: 1px solid rgba(148,163,184,.22);
+      outline: none;
+      transition: .18s ease;
+    }
+
+    button, .btn {
+      background: #162032;
+      color: var(--text);
+      padding: 9px 12px;
+      cursor: pointer;
+    }
+
+    button:hover, .btn:hover {
+      border-color: rgba(56, 189, 248, .55);
+      transform: translateY(-1px);
+    }
+
+    button.primary { background: #14532d; border-color: rgba(34,197,94,.35); }
+    button.info { background: #0c4a6e; border-color: rgba(56,189,248,.35); }
+    button.warn { background: #78350f; border-color: rgba(245,158,11,.35); }
+    button.danger { background: #7f1d1d; border-color: rgba(239,68,68,.35); }
+    button.ghost { background: transparent; }
+    button.active { box-shadow: inset 0 0 0 1px rgba(56,189,248,.7); }
+
+    input[type="file"] { display: none; }
+
+    input[type="search"], input[type="text"], input[type="number"], select, textarea {
+      width: 100%;
+      padding: 10px 12px;
+      background: #0b1220;
+      color: var(--text);
+    }
+
+    textarea {
+      min-height: 84px;
+      resize: vertical;
+      line-height: 1.5;
+    }
+
+    .status {
+      padding: 8px 12px;
+      background: #0b1220;
+      border: 1px solid rgba(148,163,184,.18);
+      border-radius: 12px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .status strong { color: var(--text); }
+
+    .chip {
+      background: var(--chip);
+      border: 1px solid rgba(148,163,184,.18);
+      color: var(--muted);
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+    }
+
+    .search-grid {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .scope-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .scope-row button { padding: 8px 11px; }
+
+    .list-wrap {
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      gap: 10px;
+    }
+
+    .table-scroll {
+      min-height: 0;
+      overflow: auto;
+      border: 1px solid rgba(148,163,184,.18);
+      border-radius: 14px;
+      background: #0b1220;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 860px;
+    }
+
+    th, td {
+      padding: 10px 10px;
+      border-bottom: 1px solid rgba(148,163,184,.12);
+      text-align: left;
+      vertical-align: top;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: #0f1a2f;
+      color: #cbd5e1;
+    }
+
+    tbody tr {
+      cursor: pointer;
+      transition: background .15s ease;
+    }
+
+    tbody tr:hover { background: rgba(56,189,248,.08); }
+    tbody tr.selected { background: rgba(34,197,94,.12); }
+
+    .muted { color: var(--muted); }
+    .truncate {
+      max-width: 300px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .player-box {
+      display: grid;
+      grid-template-columns: minmax(320px, 1fr) 300px;
+      gap: 12px;
+      align-items: start;
+    }
+
+    .video-shell {
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid rgba(148,163,184,.18);
+      background: #000;
+      aspect-ratio: 16 / 9;
+    }
+
+    #player {
+      width: 100%;
+      height: 100%;
+      min-height: 320px;
+    }
+
+    .player-side {
+      display: grid;
+      gap: 10px;
+      align-content: start;
+    }
+
+    .time-card {
+      background: #0b1220;
+      border: 1px solid rgba(148,163,184,.18);
+      border-radius: 14px;
+      padding: 12px;
+    }
+
+    .big-time {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: .03em;
+      margin-top: 2px;
+    }
+
+    .mini-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+
+    .edit-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(220px, 1fr));
+      gap: 12px;
+    }
+
+    .field {
+      display: grid;
+      gap: 6px;
+      align-content: start;
+    }
+
+    .field.full { grid-column: 1 / -1; }
+    .field label {
+      font-size: 12px;
+      color: #cbd5e1;
+    }
+
+    .note {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .footer-actions {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      padding-top: 10px;
+      border-top: 1px dashed rgba(148,163,184,.16);
+      margin-top: 10px;
+    }
+
+    .range-view {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 6px;
+    }
+
+    .range-view .card {
+      background: #0b1220;
+      border: 1px solid rgba(148,163,184,.18);
+      border-radius: 12px;
+      padding: 10px;
+    }
+
+    .small {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .help ul {
+      margin: 8px 0 0 18px;
+      padding: 0;
+      color: var(--muted);
+      line-height: 1.65;
+      font-size: 13px;
+    }
+
+    .empty {
+      padding: 32px 16px;
+      text-align: center;
+      color: var(--muted);
+      border: 1px dashed rgba(148,163,184,.2);
+      border-radius: 14px;
+      background: #0b1220;
+    }
+
+    @media (max-width: 1200px) {
+      .main { grid-template-columns: 1fr; }
+      .player-box { grid-template-columns: 1fr; }
+      .right { grid-template-rows: auto auto auto; }
+    }
+
+    @media (max-width: 760px) {
+      .edit-grid { grid-template-columns: 1fr; }
+      .range-view { grid-template-columns: 1fr; }
+      .search-grid { grid-template-columns: 1fr; }
+      .mini-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <section class="topbar">
+      <div class="title-row">
+        <div>
+          <h1>유튜브 표제어·용례 편집기</h1>
+          <div class="sub">
+            표제어 검색 / 용례 검색 / 유튜브 재생 / 구간 시작·종료 저장 / CSV·엑셀 업로드·다운로드를 한 화면에서 처리하는 단일 HTML 도구입니다.
+          </div>
+        </div>
+        <div class="pill-row">
+          <span class="chip" id="chipRows">행 0개</span>
+          <span class="chip" id="chipSource">저장본 없음</span>
+          <span class="chip" id="chipSave">자동저장 대기</span>
+        </div>
+      </div>
+      <div class="status" id="statusBox">
+        <strong>안내</strong> 브라우저 보안 때문에 로컬 PC의 CSV/XLSX 파일을 HTML 실행과 동시에 자동으로 직접 읽어오지는 못합니다. 대신 <strong>마지막으로 불러온 데이터는 브라우저 저장소(localStorage)</strong>에 자동 저장되어 다음 실행 때 바로 다시 열립니다.
+      </div>
+    </section>
+
+    <section class="toolbar">
+      <div class="control-row">
+        <label class="btn primary" for="fileInput">파일 불러오기</label>
+        <input id="fileInput" type="file" accept=".csv,.xlsx,.xls,.json" />
+        <button id="btnSample" class="info">샘플 불러오기</button>
+        <button id="btnExportCsv">CSV 다운로드</button>
+        <button id="btnExportXlsx">엑셀 다운로드</button>
+        <button id="btnExportJson">JSON 다운로드</button>
+        <button id="btnSave" class="primary">브라우저 저장</button>
+        <button id="btnClearStorage" class="warn">저장본 초기화</button>
+      </div>
+      <div class="note">
+        권장 헤더 예시: 구분 / 구분 / 번호 / 표제어 / 링크 / 뜻풀이 / 용례 / 수형 / 구간시작 / 구간종료 / 메모. 이미 있는 파일도 불러올 수 있고, 구간시작·구간종료 열이 없으면 자동으로 추가됩니다.
+      </div>
+    </section>
+
+    <section class="main">
+      <div class="left">
+        <section class="panel">
+          <h2>검색</h2>
+          <div class="scope-row" id="scopeRow">
+            <button data-scope="headword" class="active">표제어 검색</button>
+            <button data-scope="example">용례 검색</button>
+            <button data-scope="link">링크 검색</button>
+            <button data-scope="all">전체 검색</button>
+          </div>
+          <div class="search-grid">
+            <input id="searchInput" type="search" placeholder="예: [다] / 학생들이 빠짐없이 / youtube 링크 일부" />
+            <button id="btnClearSearch" class="ghost">검색 지우기</button>
+          </div>
+          <div class="note" style="margin-top:8px;">검색 결과를 클릭하면 오른쪽 편집창으로 불러옵니다.</div>
+        </section>
+
+        <section class="panel list-wrap">
+          <div class="control-row">
+            <button id="btnAddRow" class="primary">행 추가</button>
+            <button id="btnDuplicateRow">행 복제</button>
+            <button id="btnDeleteRow" class="danger">행 삭제</button>
+            <span class="small" id="resultCount">검색 결과 0개</span>
+          </div>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:70px;">번호</th>
+                  <th style="width:120px;">표제어</th>
+                  <th>용례</th>
+                  <th style="width:100px;">시작</th>
+                  <th style="width:100px;">종료</th>
+                  <th style="width:210px;">링크</th>
+                </tr>
+              </thead>
+              <tbody id="rowsTbody"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <div class="right">
+        <section class="panel">
+          <h2>플레이어 / 구간 캡처</h2>
+          <div class="player-box">
+            <div class="video-shell">
+              <div id="player"></div>
+            </div>
+            <div class="player-side">
+              <div class="time-card">
+                <div class="small">현재 재생 시간</div>
+                <div class="big-time" id="currentTimeText">0:00.0</div>
+                <div class="small" id="currentVideoText">영상 대기 중</div>
+              </div>
+              <div class="mini-grid">
+                <button id="btnSetStart" class="primary">현재시간 → 시작</button>
+                <button id="btnSetEnd" class="primary">현재시간 → 종료</button>
+                <button id="btnSeekStart">시작으로 이동</button>
+                <button id="btnSeekEnd">종료로 이동</button>
+                <button id="btnPreview" class="info">구간 미리보기</button>
+                <button id="btnLoopPreview">구간 반복 꺼짐</button>
+                <button id="btnBack5">-5초</button>
+                <button id="btnForward5">+5초</button>
+              </div>
+              <div class="field">
+                <label>재생 속도</label>
+                <select id="playbackRateSelect">
+                  <option value="0.5">0.5x</option>
+                  <option value="0.75">0.75x</option>
+                  <option value="1" selected>1.0x</option>
+                  <option value="1.25">1.25x</option>
+                  <option value="1.5">1.5x</option>
+                  <option value="1.75">1.75x</option>
+                  <option value="2">2.0x</option>
+                </select>
+              </div>
+              <div class="note">
+                링크가 바뀌면 새 영상을 자동 로드합니다. 구간 미리보기는 선택된 행의 시작~종료 시간 범위만 재생합니다.
+              </div>
+            </div>
+          </div>
+          <div class="range-view">
+            <div class="card"><div class="small">구간 시작</div><div id="rangeStartView">-</div></div>
+            <div class="card"><div class="small">구간 종료</div><div id="rangeEndView">-</div></div>
+            <div class="card"><div class="small">구간 길이</div><div id="rangeLengthView">-</div></div>
+          </div>
+        </section>
+
+        <section class="panel help">
+          <h2>사용 흐름</h2>
+          <ul>
+            <li>파일 불러오기 → 표제어 또는 용례 검색 → 행 선택 → 링크 기반 유튜브 불러오기</li>
+            <li>재생 중 원하는 시점에서 <strong>현재시간 → 시작</strong>, <strong>현재시간 → 종료</strong> 버튼으로 구간 저장</li>
+            <li>필요하면 뜻풀이·용례·수형·메모를 수정한 뒤 CSV 또는 엑셀로 다운로드</li>
+            <li>한 번 저장한 데이터는 브라우저 저장소에 남아서 다음 실행 때 자동 복구</li>
+          </ul>
+        </section>
+
+        <section class="panel">
+          <h2>선택 행 편집</h2>
+          <div id="editorEmpty" class="empty">왼쪽 목록에서 행을 선택해 주세요.</div>
+          <div id="editorArea" style="display:none;"></div>
+        </section>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const STORAGE_KEY = 'yt-sign-editor-v1';
+    const SAVE_TS_KEY = 'yt-sign-editor-v1-save-ts';
+
+    const sampleHeaders = ['구분', '구분', '번호', '표제어', '링크', '뜻풀이', '용례', '수형', '구간시작', '구간종료', '메모'];
+    const sampleRows = [
+      ['한국복지대 한수 사전 한국수어1 해설 버전', 'KSL1', '2', '[다]', 'https://www.youtube.com/watch?v=DOHj8nneOos&list=PLJhlGbiA8gN7e_Q_KRMsqPQ7-wHS10paX&index=2&pp=iAQB', '', '', '', '', '', '샘플 데이터'],
+      ['한국복지대 한수 사전 한국수어1 해설 버전', 'KSL1', '885', '[다]', 'https://www.youtube.com/watch?v=JRfzyCSoemo&list=PLJhlGbiA8gN5fyT0STJzDTIcAHJHLxplt&index=885', '', '', '', '', '', '사용자 예시 링크']
+    ];
+
+    const state = {
+      headers: [],
+      rows: [],
+      selectedRowId: null,
+      scope: 'headword',
+      query: '',
+      sourceName: '저장본 없음',
+      loopPreview: false,
+      previewStopAt: null,
+      currentVideoId: null,
+      ytReady: false,
+      player: null
+    };
+
+    const $ = (sel) => document.querySelector(sel);
+    const rowsTbody = $('#rowsTbody');
+    const editorArea = $('#editorArea');
+    const editorEmpty = $('#editorEmpty');
+
+    function uniqueHeaders(rawHeaders) {
+      const seen = new Map();
+      return rawHeaders.map((label, i) => {
+        const safeLabel = String(label ?? '').trim() || `열${i + 1}`;
+        const base = safeLabel;
+        const count = (seen.get(base) || 0) + 1;
+        seen.set(base, count);
+        return {
+          label: safeLabel,
+          key: count === 1 ? `${safeLabel}` : `${safeLabel}__${count}`
+        };
+      });
+    }
+
+    function canonicalTrim(v) {
+      return String(v ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+    }
+
+    function ensureColumns(headers) {
+      const need = ['구간시작', '구간종료', '메모'];
+      const exists = headers.map(h => h.label.trim());
+      need.forEach(label => {
+        if (!exists.includes(label)) {
+          headers.push({ label, key: label });
+        }
+      });
+      return headers;
+    }
+
+    function createRowsFromAoa(aoa) {
+      if (!aoa || !aoa.length) return { headers: [], rows: [] };
+      const rawHeaders = aoa[0].map(v => String(v ?? '').trim());
+      const headers = ensureColumns(uniqueHeaders(rawHeaders));
+      const width = headers.length;
+      const rows = [];
+      for (let i = 1; i < aoa.length; i++) {
+        const arr = Array.isArray(aoa[i]) ? aoa[i] : [];
+        const nonEmpty = arr.some(v => String(v ?? '').trim() !== '');
+        if (!nonEmpty) continue;
+        const obj = { _id: cryptoRandomId() };
+        headers.forEach((h, idx) => {
+          obj[h.key] = arr[idx] == null ? '' : String(arr[idx]);
+        });
+        rows.push(obj);
+      }
+      return { headers, rows };
+    }
+
+    function cryptoRandomId() {
+      if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+      return 'row-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+    }
+
+    function getHeaderByLabelMatch(regex) {
+      return state.headers.find(h => regex.test(String(h.label).replace(/\s+/g, '')));
+    }
+
+    function getFieldKey(type) {
+      const map = {
+        number: /^(번호|no|id)$/i,
+        headword: /(표제어|단어|어휘)/,
+        link: /(링크|url|주소|youtube|유튜브)/i,
+        definition: /(뜻풀이|의미|설명)/,
+        example: /(용례|예문|문장)/,
+        form: /(수형|수형문|손모양)/,
+        start: /(구간시작|시작시간|clipstart|start)/i,
+        end: /(구간종료|종료시간|clipend|end)/i,
+        note: /(메모|비고|노트)/
+      };
+      const hit = getHeaderByLabelMatch(map[type]);
+      return hit ? hit.key : null;
+    }
+
+    function getCell(row, type) {
+      const key = getFieldKey(type);
+      return key ? (row[key] ?? '') : '';
+    }
+
+    function setCell(row, type, value) {
+      const key = getFieldKey(type);
+      if (key) row[key] = value;
+    }
+
+    function saveStateToLocalStorage(sourceLabel = null) {
+      try {
+        const payload = {
+          headers: state.headers,
+          rows: state.rows,
+          sourceName: sourceLabel || state.sourceName || '브라우저 저장본'
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+        localStorage.setItem(SAVE_TS_KEY, String(Date.now()));
+        if (sourceLabel) state.sourceName = sourceLabel;
+        updateTopInfo();
+        $('#chipSave').textContent = '자동저장 완료';
+      } catch (err) {
+        console.error(err);
+        setStatus('저장 실패: 브라우저 저장소 용량이 부족하거나 접근이 제한되었습니다.', true);
+      }
+    }
+
+    function loadStateFromLocalStorage() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return false;
+        const parsed = JSON.parse(raw);
+        if (!parsed || !Array.isArray(parsed.headers) || !Array.isArray(parsed.rows)) return false;
+        state.headers = parsed.headers;
+        state.rows = parsed.rows;
+        state.sourceName = parsed.sourceName || '브라우저 저장본';
+        if (state.rows.length) state.selectedRowId = state.rows[0]._id;
+        return true;
+      } catch (err) {
+        console.error(err);
+        return false;
+      }
+    }
+
+    function clearStorage() {
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(SAVE_TS_KEY);
+      setStatus('브라우저 저장본을 삭제했습니다. 현재 화면의 데이터는 유지되지만, 새로고침하면 사라집니다.');
+      updateTopInfo();
+    }
+
+    function updateTopInfo() {
+      $('#chipRows').textContent = `행 ${state.rows.length}개`;
+      $('#chipSource').textContent = state.sourceName || '저장본 없음';
+      const ts = Number(localStorage.getItem(SAVE_TS_KEY) || 0);
+      $('#chipSave').textContent = ts ? `최근 저장 ${new Date(ts).toLocaleString()}` : '자동저장 대기';
+    }
+
+    function setStatus(msg, isError = false) {
+      $('#statusBox').innerHTML = `<strong>${isError ? '오류' : '안내'}</strong> ${escapeHtml(msg)}`;
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+    }
+
+    function normalizeForSearch(v) {
+      return String(v ?? '').toLowerCase();
+    }
+
+    function getFilteredRows() {
+      const q = state.query.trim().toLowerCase();
+      if (!q) return state.rows;
+      return state.rows.filter(row => {
+        const headword = normalizeForSearch(getCell(row, 'headword'));
+        const example = normalizeForSearch(getCell(row, 'example'));
+        const link = normalizeForSearch(getCell(row, 'link'));
+        const definition = normalizeForSearch(getCell(row, 'definition'));
+        switch (state.scope) {
+          case 'headword': return headword.includes(q);
+          case 'example': return example.includes(q);
+          case 'link': return link.includes(q);
+          default: return [headword, example, link, definition].some(v => v.includes(q));
+        }
+      });
+    }
+
+    function renderRows() {
+      const filtered = getFilteredRows();
+      $('#resultCount').textContent = `검색 결과 ${filtered.length}개`;
+      if (!filtered.length) {
+        rowsTbody.innerHTML = `<tr><td colspan="6" class="muted">검색 결과가 없습니다.</td></tr>`;
+        return;
+      }
+      rowsTbody.innerHTML = filtered.map(row => {
+        const selected = row._id === state.selectedRowId ? 'selected' : '';
+        return `
+          <tr class="${selected}" data-row-id="${escapeHtml(row._id)}">
+            <td>${escapeHtml(getCell(row, 'number') || '')}</td>
+            <td>${escapeHtml(getCell(row, 'headword') || '')}</td>
+            <td class="truncate" title="${escapeHtml(getCell(row, 'example') || '')}">${escapeHtml(getCell(row, 'example') || '')}</td>
+            <td>${escapeHtml(getCell(row, 'start') || '')}</td>
+            <td>${escapeHtml(getCell(row, 'end') || '')}</td>
+            <td class="truncate" title="${escapeHtml(getCell(row, 'link') || '')}">${escapeHtml(getCell(row, 'link') || '')}</td>
+          </tr>
+        `;
+      }).join('');
+      [...rowsTbody.querySelectorAll('tr[data-row-id]')].forEach(tr => {
+        tr.addEventListener('click', () => {
+          state.selectedRowId = tr.dataset.rowId;
+          renderRows();
+          renderEditor();
+          loadSelectedRowToPlayer();
+        });
+      });
+    }
+
+    function getSelectedRow() {
+      return state.rows.find(r => r._id === state.selectedRowId) || null;
+    }
+
+    function renderEditor() {
+      const row = getSelectedRow();
+      if (!row) {
+        editorEmpty.style.display = 'block';
+        editorArea.style.display = 'none';
+        updateRangeCards(null);
+        return;
+      }
+      editorEmpty.style.display = 'none';
+      editorArea.style.display = 'block';
+
+      const preferredOrder = ['number', 'headword', 'link', 'definition', 'example', 'form', 'start', 'end', 'note'];
+      const renderedKeys = new Set();
+      const preferredFields = preferredOrder
+        .map(type => {
+          const key = getFieldKey(type);
+          if (!key) return null;
+          renderedKeys.add(key);
+          return { key, label: state.headers.find(h => h.key === key)?.label || key, type };
+        })
+        .filter(Boolean);
+
+      const extraFields = state.headers
+        .filter(h => !renderedKeys.has(h.key))
+        .map(h => ({ key: h.key, label: h.label, type: 'text' }));
+
+      const fields = [...preferredFields, ...extraFields];
+
+      editorArea.innerHTML = `
+        <div class="edit-grid">
+          ${fields.map(f => renderField(row, f)).join('')}
+        </div>
+        <div class="footer-actions">
+          <div class="note">선택 행 변경사항은 입력 즉시 메모리에 반영되고, 저장 버튼 또는 자동 저장으로 브라우저에 남습니다.</div>
+          <div class="control-row">
+            <button id="btnLoadThisVideo" class="info">이 행 영상 불러오기</button>
+            <button id="btnPlayFromStart">시작부터 재생</button>
+            <button id="btnSaveRow" class="primary">지금 저장</button>
+          </div>
+        </div>
+      `;
+
+      editorArea.querySelectorAll('[data-bind-key]').forEach(el => {
+        const key = el.dataset.bindKey;
+        const tag = el.tagName.toLowerCase();
+        const eventName = tag === 'textarea' || tag === 'input' ? 'input' : 'change';
+        el.addEventListener(eventName, () => {
+          row[key] = el.value;
+          queueLightRefresh();
+        });
+      });
+
+      $('#btnSaveRow').onclick = () => {
+        saveStateToLocalStorage(state.sourceName || '브라우저 저장본');
+        setStatus('현재 행을 저장했습니다.');
+      };
+      $('#btnLoadThisVideo').onclick = () => loadSelectedRowToPlayer(true);
+      $('#btnPlayFromStart').onclick = () => {
+        const row = getSelectedRow();
+        if (!row) return;
+        loadSelectedRowToPlayer(true, true);
+      };
+      updateRangeCards(row);
+    }
+
+    function renderField(row, field) {
+      const value = row[field.key] ?? '';
+      const full = ['definition', 'example', 'note'].includes(field.type) || /뜻풀이|용례|메모|비고/.test(field.label);
+      const useTextarea = full || String(value).length > 40;
+      return `
+        <div class="field ${full ? 'full' : ''}">
+          <label>${escapeHtml(field.label)}</label>
+          ${useTextarea
+            ? `<textarea data-bind-key="${escapeHtml(field.key)}">${escapeHtml(value)}</textarea>`
+            : `<input type="text" data-bind-key="${escapeHtml(field.key)}" value="${escapeHtml(value)}" />`}
+        </div>
+      `;
+    }
+
+    let refreshTimer = null;
+    function queueLightRefresh() {
+      updateRangeCards(getSelectedRow());
+      if (refreshTimer) clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => {
+        renderRows();
+        saveStateToLocalStorage(state.sourceName || '브라우저 저장본');
+      }, 250);
+    }
+
+    function parseTime(input) {
+      if (input == null) return null;
+      if (typeof input === 'number' && Number.isFinite(input)) return input;
+      const str = String(input).trim();
+      if (!str) return null;
+      if (/^\d+(\.\d+)?$/.test(str)) return Number(str);
+      const parts = str.split(':').map(s => s.trim()).filter(Boolean);
+      if (!parts.length) return null;
+      const nums = parts.map(Number);
+      if (nums.some(n => Number.isNaN(n))) return null;
+      if (nums.length === 3) return nums[0] * 3600 + nums[1] * 60 + nums[2];
+      if (nums.length === 2) return nums[0] * 60 + nums[1];
+      return nums[0];
+    }
+
+    function formatTime(sec) {
+      if (sec == null || !Number.isFinite(sec)) return '';
+      const value = Math.max(0, Number(sec));
+      const h = Math.floor(value / 3600);
+      const m = Math.floor((value % 3600) / 60);
+      const s = value % 60;
+      const sText = s < 10 ? '0' + s.toFixed(1) : s.toFixed(1);
+      if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${sText.padStart(4, '0')}`;
+      return `${m}:${sText.padStart(4, '0')}`;
+    }
+
+    function updateRangeCards(row) {
+      if (!row) {
+        $('#rangeStartView').textContent = '-';
+        $('#rangeEndView').textContent = '-';
+        $('#rangeLengthView').textContent = '-';
+        return;
+      }
+      const start = parseTime(getCell(row, 'start'));
+      const end = parseTime(getCell(row, 'end'));
+      $('#rangeStartView').textContent = start == null ? '-' : formatTime(start);
+      $('#rangeEndView').textContent = end == null ? '-' : formatTime(end);
+      $('#rangeLengthView').textContent = (start != null && end != null && end >= start) ? formatTime(end - start) : '-';
+    }
+
+    function extractYouTubeVideoId(url) {
+      if (!url) return '';
+      const text = String(url).trim();
+      try {
+        const u = new URL(text);
+        if (u.hostname.includes('youtu.be')) return u.pathname.replace('/', '').trim();
+        const v = u.searchParams.get('v');
+        if (v) return v.trim();
+        const parts = u.pathname.split('/').filter(Boolean);
+        const embedIndex = parts.indexOf('embed');
+        if (embedIndex >= 0 && parts[embedIndex + 1]) return parts[embedIndex + 1];
+        return '';
+      } catch {
+        const m = text.match(/(?:v=|youtu\.be\/|embed\/)([A-Za-z0-9_-]{8,})/);
+        return m ? m[1] : '';
+      }
+    }
+
+    function loadVideo(videoId, startSec = null, autoPlay = false) {
+      if (!videoId || !state.player || !state.ytReady) return;
+      state.currentVideoId = videoId;
+      const opts = { videoId, startSeconds: startSec ?? 0 };
+      if (autoPlay) state.player.loadVideoById(opts);
+      else state.player.cueVideoById(opts);
+      $('#currentVideoText').textContent = `영상 ID: ${videoId}`;
+    }
+
+    function loadSelectedRowToPlayer(forceReload = false, autoPlayFromStart = false) {
+      const row = getSelectedRow();
+      if (!row || !state.player || !state.ytReady) return;
+      const link = getCell(row, 'link');
+      const videoId = extractYouTubeVideoId(link);
+      if (!videoId) {
+        setStatus('선택한 행에 유효한 유튜브 링크가 없습니다.', true);
+        return;
+      }
+      const start = parseTime(getCell(row, 'start'));
+      const shouldReload = forceReload || state.currentVideoId !== videoId;
+      if (shouldReload) {
+        loadVideo(videoId, start ?? 0, autoPlayFromStart);
+      } else if (start != null) {
+        state.player.seekTo(start, true);
+        if (autoPlayFromStart) state.player.playVideo();
+      }
+      updateRangeCards(row);
+      $('#currentVideoText').textContent = `${getCell(row, 'headword') || '표제어 없음'} · ${videoId}`;
+    }
+
+    function startPreview(loop = false) {
+      const row = getSelectedRow();
+      if (!row || !state.player || !state.ytReady) return;
+      const videoId = extractYouTubeVideoId(getCell(row, 'link'));
+      const start = parseTime(getCell(row, 'start'));
+      const end = parseTime(getCell(row, 'end'));
+      if (!videoId) return setStatus('유튜브 링크를 먼저 확인해 주세요.', true);
+      if (start == null || end == null || end <= start) return setStatus('구간시작/구간종료 값을 먼저 입력해 주세요.', true);
+      state.previewStopAt = end;
+      if (state.currentVideoId !== videoId) {
+        loadVideo(videoId, start, true);
+      } else {
+        state.player.seekTo(start, true);
+        state.player.playVideo();
+      }
+      state.loopPreview = loop;
+      $('#btnLoopPreview').textContent = loop ? '구간 반복 켜짐' : '구간 반복 꺼짐';
+    }
+
+    function setSelectedTime(which) {
+      const row = getSelectedRow();
+      if (!row || !state.player || !state.ytReady) return;
+      const current = Number(state.player.getCurrentTime?.() || 0);
+      setCell(row, which, formatTime(current));
+      renderEditor();
+      renderRows();
+      saveStateToLocalStorage(state.sourceName || '브라우저 저장본');
+      setStatus(`${which === 'start' ? '구간 시작' : '구간 종료'} 시간을 ${formatTime(current)} 로 저장했습니다.`);
+    }
+
+    function seekToSelectedTime(which) {
+      const row = getSelectedRow();
+      if (!row || !state.player || !state.ytReady) return;
+      const sec = parseTime(getCell(row, which));
+      if (sec == null) return;
+      state.player.seekTo(sec, true);
+    }
+
+    function exportWorkbook(kind) {
+      if (!state.headers.length) {
+        setStatus('내보낼 데이터가 없습니다.', true);
+        return;
+      }
+      const aoa = [state.headers.map(h => h.label)];
+      state.rows.forEach(row => {
+        aoa.push(state.headers.map(h => row[h.key] ?? ''));
+      });
+      if (kind === 'json') {
+        const blob = new Blob([JSON.stringify({ headers: state.headers, rows: state.rows }, null, 2)], { type: 'application/json;charset=utf-8' });
+        downloadBlob(blob, fileBaseName() + '.json');
+        return;
+      }
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'data');
+      if (kind === 'csv') {
+        XLSX.writeFile(wb, fileBaseName() + '.csv', { bookType: 'csv' });
+      } else {
+        XLSX.writeFile(wb, fileBaseName() + '.xlsx', { bookType: 'xlsx' });
+      }
+    }
+
+    function fileBaseName() {
+      const date = new Date();
+      const pad = n => String(n).padStart(2, '0');
+      return `yt_range_editor_${date.getFullYear()}${pad(date.getMonth()+1)}${pad(date.getDate())}_${pad(date.getHours())}${pad(date.getMinutes())}`;
+    }
+
+    function downloadBlob(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    async function importFile(file) {
+      try {
+        const ext = file.name.split('.').pop().toLowerCase();
+        if (ext === 'json') {
+          const text = await file.text();
+          const parsed = JSON.parse(text);
+          if (!Array.isArray(parsed.headers) || !Array.isArray(parsed.rows)) throw new Error('JSON 형식이 올바르지 않습니다.');
+          state.headers = ensureColumns(parsed.headers);
+          state.rows = parsed.rows.map(r => ({ _id: r._id || cryptoRandomId(), ...r }));
+        } else {
+          const data = await file.arrayBuffer();
+          const wb = XLSX.read(data, { type: 'array' });
+          const first = wb.Sheets[wb.SheetNames[0]];
+          const aoa = XLSX.utils.sheet_to_json(first, { header: 1, defval: '' });
+          const built = createRowsFromAoa(aoa);
+          state.headers = built.headers;
+          state.rows = built.rows;
+        }
+        state.sourceName = `파일: ${file.name}`;
+        state.selectedRowId = state.rows[0]?._id || null;
+        renderAll();
+        saveStateToLocalStorage(state.sourceName);
+        setStatus(`${file.name} 파일을 불러왔습니다.`);
+      } catch (err) {
+        console.error(err);
+        setStatus(`파일 불러오기에 실패했습니다. ${err.message || err}`, true);
+      }
+    }
+
+    function loadSample() {
+      const built = createRowsFromAoa([sampleHeaders, ...sampleRows]);
+      state.headers = built.headers;
+      state.rows = built.rows;
+      state.sourceName = '샘플 데이터';
+      state.selectedRowId = state.rows[0]?._id || null;
+      renderAll();
+      saveStateToLocalStorage('샘플 데이터');
+      setStatus('샘플 데이터를 불러왔습니다. 바로 테스트해 보세요.');
+    }
+
+    function addRow() {
+      if (!state.headers.length) {
+        loadSample();
+        return;
+      }
+      const row = { _id: cryptoRandomId() };
+      state.headers.forEach(h => row[h.key] = '');
+      const numberKey = getFieldKey('number');
+      if (numberKey) row[numberKey] = String(state.rows.length + 1);
+      state.rows.unshift(row);
+      state.selectedRowId = row._id;
+      renderAll();
+      saveStateToLocalStorage(state.sourceName || '브라우저 저장본');
+    }
+
+    function duplicateSelectedRow() {
+      const row = getSelectedRow();
+      if (!row) return;
+      const clone = { ...row, _id: cryptoRandomId() };
+      state.rows.unshift(clone);
+      state.selectedRowId = clone._id;
+      renderAll();
+      saveStateToLocalStorage(state.sourceName || '브라우저 저장본');
+      setStatus('선택 행을 복제했습니다.');
+    }
+
+    function deleteSelectedRow() {
+      const row = getSelectedRow();
+      if (!row) return;
+      if (!confirm('선택한 행을 삭제할까요?')) return;
+      const idx = state.rows.findIndex(r => r._id === row._id);
+      if (idx >= 0) state.rows.splice(idx, 1);
+      state.selectedRowId = state.rows[0]?._id || null;
+      renderAll();
+      saveStateToLocalStorage(state.sourceName || '브라우저 저장본');
+      setStatus('행을 삭제했습니다.');
+    }
+
+    function renderAll() {
+      updateTopInfo();
+      renderRows();
+      renderEditor();
+      const row = getSelectedRow();
+      if (row) loadSelectedRowToPlayer();
+    }
+
+    function bindEvents() {
+      $('#fileInput').addEventListener('change', async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        await importFile(file);
+        e.target.value = '';
+      });
+      $('#btnSample').onclick = loadSample;
+      $('#btnSave').onclick = () => {
+        saveStateToLocalStorage(state.sourceName || '브라우저 저장본');
+        setStatus('현재 데이터를 브라우저에 저장했습니다.');
+      };
+      $('#btnClearStorage').onclick = clearStorage;
+      $('#btnExportCsv').onclick = () => exportWorkbook('csv');
+      $('#btnExportXlsx').onclick = () => exportWorkbook('xlsx');
+      $('#btnExportJson').onclick = () => exportWorkbook('json');
+      $('#searchInput').addEventListener('input', (e) => {
+        state.query = e.target.value;
+        renderRows();
+      });
+      $('#btnClearSearch').onclick = () => {
+        state.query = '';
+        $('#searchInput').value = '';
+        renderRows();
+      };
+      [...$('#scopeRow').querySelectorAll('button[data-scope]')].forEach(btn => {
+        btn.addEventListener('click', () => {
+          state.scope = btn.dataset.scope;
+          [...$('#scopeRow').querySelectorAll('button')].forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          renderRows();
+        });
+      });
+
+      $('#btnAddRow').onclick = addRow;
+      $('#btnDuplicateRow').onclick = duplicateSelectedRow;
+      $('#btnDeleteRow').onclick = deleteSelectedRow;
+
+      $('#btnSetStart').onclick = () => setSelectedTime('start');
+      $('#btnSetEnd').onclick = () => setSelectedTime('end');
+      $('#btnSeekStart').onclick = () => seekToSelectedTime('start');
+      $('#btnSeekEnd').onclick = () => seekToSelectedTime('end');
+      $('#btnPreview').onclick = () => startPreview(state.loopPreview);
+      $('#btnLoopPreview').onclick = () => {
+        state.loopPreview = !state.loopPreview;
+        $('#btnLoopPreview').textContent = state.loopPreview ? '구간 반복 켜짐' : '구간 반복 꺼짐';
+      };
+      $('#btnBack5').onclick = () => {
+        if (!state.player || !state.ytReady) return;
+        const now = Number(state.player.getCurrentTime?.() || 0);
+        state.player.seekTo(Math.max(0, now - 5), true);
+      };
+      $('#btnForward5').onclick = () => {
+        if (!state.player || !state.ytReady) return;
+        const now = Number(state.player.getCurrentTime?.() || 0);
+        state.player.seekTo(now + 5, true);
+      };
+      $('#playbackRateSelect').addEventListener('change', (e) => {
+        if (!state.player || !state.ytReady) return;
+        const rate = Number(e.target.value || 1);
+        try { state.player.setPlaybackRate(rate); } catch (err) {}
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+          e.preventDefault();
+          saveStateToLocalStorage(state.sourceName || '브라우저 저장본');
+          setStatus('브라우저 저장 완료');
+          return;
+        }
+        if (e.target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+        if (e.key === 's' || e.key === 'S') { e.preventDefault(); setSelectedTime('start'); }
+        if (e.key === 'e' || e.key === 'E') { e.preventDefault(); setSelectedTime('end'); }
+        if (e.key === 'p' || e.key === 'P') { e.preventDefault(); startPreview(state.loopPreview); }
+      });
+    }
+
+    window.onYouTubeIframeAPIReady = function() {
+      state.player = new YT.Player('player', {
+        videoId: '',
+        playerVars: {
+          autoplay: 0,
+          controls: 1,
+          rel: 0,
+          modestbranding: 1
+        },
+        events: {
+          onReady: () => {
+            state.ytReady = true;
+            const row = getSelectedRow();
+            if (row) loadSelectedRowToPlayer();
+          },
+          onStateChange: () => {}
+        }
+      });
+    };
+
+    setInterval(() => {
+      if (!state.player || !state.ytReady || typeof state.player.getCurrentTime !== 'function') return;
+      const now = Number(state.player.getCurrentTime() || 0);
+      $('#currentTimeText').textContent = formatTime(now) || '0:00.0';
+      if (state.previewStopAt != null && now >= state.previewStopAt) {
+        const row = getSelectedRow();
+        const start = row ? parseTime(getCell(row, 'start')) : null;
+        if (state.loopPreview && start != null) {
+          state.player.seekTo(start, true);
+          state.player.playVideo();
+        } else {
+          state.player.pauseVideo();
+          state.previewStopAt = null;
+        }
+      }
+    }, 120);
+
+    function init() {
+      bindEvents();
+      const restored = loadStateFromLocalStorage();
+      if (restored) {
+        renderAll();
+        setStatus('브라우저 저장본을 자동으로 복구했습니다.');
+      } else {
+        loadSample();
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>
