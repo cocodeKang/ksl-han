@@ -301,9 +301,11 @@
 
     .text-popup {
       position: absolute;
-      right: 14px;
-      top: 14px;
-      width: min(420px, calc(100% - 28px));
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: min(980px, calc(100% - 28px));
+      max-width: calc(100% - 28px);
       z-index: 8;
       display: none;
     }
@@ -312,47 +314,62 @@
       display: block;
     }
 
+    .text-popup.type-example,
+    .text-popup.type-definition {
+      width: min(1040px, calc(100% - 24px));
+    }
+
     .popup-card {
-      background: rgba(15, 23, 42, .92);
+      background: rgba(15, 23, 42, .96);
       border: 1px solid rgba(148,163,184,.24);
-      border-radius: 16px;
-      box-shadow: 0 16px 40px rgba(0,0,0,.35);
+      border-radius: 20px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.42);
       overflow: hidden;
-      backdrop-filter: blur(10px);
+      backdrop-filter: blur(12px);
     }
 
     .popup-head {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 10px;
-      padding: 12px 14px;
+      gap: 12px;
+      padding: 16px 18px;
       border-bottom: 1px solid rgba(148,163,184,.14);
-      background: rgba(11, 18, 32, .75);
+      background: rgba(11, 18, 32, .82);
     }
 
     .popup-title {
-      font-size: 13px;
-      font-weight: 700;
-      color: #e2e8f0;
+      font-size: 20px;
+      font-weight: 800;
+      color: #f8fafc;
+      letter-spacing: -.01em;
     }
 
     .popup-body {
-      padding: 14px;
+      padding: 22px 24px;
       white-space: pre-wrap;
-      line-height: 1.7;
-      font-size: 15px;
-      max-height: 40vh;
+      line-height: 1.8;
+      font-size: clamp(22px, 2.2vw, 34px);
+      max-height: min(68vh, 760px);
       overflow: auto;
+      word-break: keep-all;
+    }
+
+    .text-popup.type-headword .popup-body {
+      font-size: clamp(28px, 3vw, 46px);
+      text-align: center;
+      line-height: 1.5;
     }
 
     .popup-body.editing {
-      padding: 12px;
+      padding: 18px;
     }
 
     .popup-body textarea {
-      min-height: 150px;
+      min-height: min(44vh, 420px);
       resize: vertical;
+      font-size: clamp(18px, 1.6vw, 24px);
+      line-height: 1.7;
     }
 
     .popup-actions {
@@ -968,13 +985,14 @@
     }
 
     function toggleTextPopup(type) {
-      if (type === 'example') {
-        if (!state.overlay.visible || state.overlay.type !== 'example') {
-          openTextPopup('example', false);
+      const editableTypes = new Set(['example', 'definition']);
+      if (editableTypes.has(type)) {
+        if (!state.overlay.visible || state.overlay.type !== type) {
+          openTextPopup(type, false);
           return;
         }
         if (!state.overlay.editMode) {
-          openTextPopup('example', true);
+          openTextPopup(type, true);
           setTimeout(() => $('#popupEditor')?.focus(), 0);
           return;
         }
@@ -993,11 +1011,11 @@
       const editor = $('#popupEditor');
       if (!info || !editor) return;
       setCell(info.row, info.type, editor.value);
-      if (info.type === 'example') {
-        const exKey = getFieldKey('example');
-        const exInput = exKey ? editorArea.querySelector(`[data-bind-key="${CSS.escape(exKey)}"]`) : null;
-        if (exInput) exInput.value = editor.value;
-      }
+
+      const bindKey = getFieldKey(info.type);
+      const bindInput = bindKey ? editorArea.querySelector(`[data-bind-key="${CSS.escape(bindKey)}"]`) : null;
+      if (bindInput) bindInput.value = editor.value;
+
       buildRowSearchCache(info.row);
       queueLightRefresh();
       state.overlay.editMode = false;
@@ -1011,16 +1029,21 @@
       if (!el) return;
       const info = getOverlayFieldInfo(state.overlay.type);
       if (!state.overlay.visible || !info) {
-        el.classList.remove('visible');
+        el.classList.remove('visible', 'type-headword', 'type-definition', 'type-example');
         el.setAttribute('aria-hidden', 'true');
         el.innerHTML = '';
         return;
       }
       const currentValue = info.value || '';
-      const hint = info.type === 'example'
-        ? (state.overlay.editMode ? 'Enter 저장 · Shift+Enter 줄바꿈 · Esc 닫기' : 'A 다시 누르면 편집')
+      const editableTypes = new Set(['example', 'definition']);
+      const isEditable = editableTypes.has(info.type);
+      const hotkeyMap = { headword: 'Q', definition: 'E', example: 'A' };
+      const hint = isEditable
+        ? (state.overlay.editMode ? 'Enter 저장 · Shift+Enter 줄바꿈 · Esc 닫기' : `${hotkeyMap[info.type] || ''} 다시 누르면 편집`)
         : 'Esc 닫기';
-      el.classList.add('visible');
+
+      el.classList.remove('type-headword', 'type-definition', 'type-example');
+      el.classList.add('visible', `type-${info.type}`);
       el.setAttribute('aria-hidden', 'false');
       el.innerHTML = `
         <div class="popup-card">
@@ -1030,8 +1053,8 @@
               <div class="small">${escapeHtml(getCell(info.row, 'headword') || '')} · ${escapeHtml(hint)}</div>
             </div>
             <div class="control-row">
-              ${info.type === 'example' && !state.overlay.editMode ? '<button id="btnPopupEdit">편집</button>' : ''}
-              ${info.type === 'example' && state.overlay.editMode ? '<button id="btnPopupSave" class="primary">저장</button>' : ''}
+              ${isEditable && !state.overlay.editMode ? '<button id="btnPopupEdit">편집</button>' : ''}
+              ${isEditable && state.overlay.editMode ? '<button id="btnPopupSave" class="primary">저장</button>' : ''}
               <button id="btnPopupClose" class="ghost">닫기</button>
             </div>
           </div>
@@ -1040,7 +1063,7 @@
               ? `<textarea id="popupEditor">${escapeHtml(currentValue)}</textarea>`
               : `${escapeHtml(currentValue || '(내용 없음)')}`}
           </div>
-          ${info.type === 'example' && state.overlay.editMode ? '<div class="popup-actions"><button id="btnPopupSaveBottom" class="primary">Enter로 저장</button><button id="btnPopupCancelEdit">편집 취소</button></div>' : ''}
+          ${isEditable && state.overlay.editMode ? '<div class="popup-actions"><button id="btnPopupSaveBottom" class="primary">Enter로 저장</button><button id="btnPopupCancelEdit">편집 취소</button></div>' : ''}
         </div>
       `;
       $('#btnPopupClose')?.addEventListener('click', closeTextPopup);
@@ -1333,6 +1356,33 @@
       const sec = parseTime(getCell(row, which));
       if (sec == null) return;
       state.player.seekTo(sec, true);
+    }
+
+    function clearSelectedRange() {
+      const row = getSelectedRow();
+      if (!row) return;
+      setCell(row, 'start', '');
+      setCell(row, 'end', '');
+      updateRangeCards(row);
+      renderEditor();
+      renderRows();
+      renderTextPopup();
+      saveStateToLocalStorage(state.sourceName || '브라우저 저장본');
+      setStatus('구간 시작/종료를 초기화했습니다.');
+    }
+
+    function togglePlayback() {
+      if (!state.player || !state.ytReady) return;
+      try {
+        const playerState = Number(state.player.getPlayerState?.());
+        if (playerState === 1) {
+          state.player.pauseVideo();
+        } else {
+          state.player.playVideo();
+        }
+      } catch (err) {
+        try { state.player.playVideo(); } catch (innerErr) {}
+      }
     }
 
     function scheduleSearchRender() {
@@ -1708,6 +1758,10 @@
 
         if (e.key === '[') { e.preventDefault(); setSelectedTime('start'); return; }
         if (e.key === ']') { e.preventDefault(); setSelectedTime('end'); return; }
+        if (e.key === '\\') { e.preventDefault(); clearSelectedRange(); return; }
+        if (e.key === '{') { e.preventDefault(); seekToSelectedTime('start'); return; }
+        if (e.key === '}') { e.preventDefault(); seekToSelectedTime('end'); return; }
+        if (e.code === 'Space' || e.key === ' ') { e.preventDefault(); togglePlayback(); return; }
         if (e.key === 'p' || e.key === 'P') { e.preventDefault(); startPreview(state.loopPreview); return; }
         if (e.key === 'f' || e.key === 'F') { e.preventDefault(); toggleFullscreen(); return; }
         if (e.key === 'x' || e.key === 'X') { e.preventDefault(); toggleMask(); return; }
