@@ -1660,11 +1660,22 @@
     function enterPopupEdit(type) {
       if (!state.overlay.visible || state.overlay.type !== type) {
         openTextPopup(type, true);
-      } else {
+        setTimeout(() => $('#popupEditor')?.focus(), 0);
+        return;
+      }
+      if (!state.overlay.editMode) {
         state.overlay.editMode = true;
         renderTextPopup();
+        setTimeout(() => $('#popupEditor')?.focus(), 0);
+        return;
       }
-      setTimeout(() => $('#popupEditor')?.focus(), 0);
+      const editor = $('#popupEditor');
+      if (editor) {
+        editor.value = '';
+        editor.focus();
+        setStatus(`${getOverlayFieldInfo(type)?.label || '텍스트'} 내용을 비웠습니다.`);
+        showToast(`${getOverlayFieldInfo(type)?.label || '텍스트'} 초기화`);
+      }
     }
 
     function saveOverlayEdit(closeAfter = false) {
@@ -1701,7 +1712,7 @@
       const isEditable = editableTypes.has(info.type);
       const hotkeyMap = { headword: 'Q', definition: 'E', example: 'A', form: 'G' };
       const hint = isEditable
-        ? (state.overlay.editMode ? 'Enter 저장 · Shift+Enter 줄바꿈 · Esc 닫기' : `Enter 또는 ${hotkeyMap[info.type] || ''} 닫기 · Shift+${hotkeyMap[info.type] || ''} 편집`)
+        ? (state.overlay.editMode ? `Enter 저장 · Shift+Enter 줄바꿈 · Shift+${hotkeyMap[info.type] || ''} 초기화 · Esc 닫기` : `Enter 또는 ${hotkeyMap[info.type] || ''} 닫기 · Shift+${hotkeyMap[info.type] || ''} 편집`)
         : 'Esc 닫기';
 
       el.classList.remove('type-headword', 'type-definition', 'type-example', 'type-form');
@@ -2405,16 +2416,32 @@
       if (!row) return;
       const idx = state.rows.findIndex(r => r._id === row._id);
       const insertAt = idx >= 0 ? idx : state.rows.length - 1;
-      const clone = buildRowSearchCache(ensureRowMeta({ ...stripSearchState(row), _id: cryptoRandomId(), _sort: computeInsertSortAfter(insertAt) }));
+      const endSec = parseTime(getCell(row, 'end')) ?? Number(state.player?.getCurrentTime?.() || 0);
+      const cloneBase = ensureRowMeta({ ...stripSearchState(row), _id: cryptoRandomId(), _sort: computeInsertSortAfter(insertAt) });
+      setCell(cloneBase, 'start', '');
+      setCell(cloneBase, 'end', '');
+      const clone = buildRowSearchCache(cloneBase);
       state.rows.splice(insertAt + 1, 0, clone);
       state.selectedRowId = clone._id;
+      state.previewStopAt = null;
+      state.autoAdvanceLockUntil = Date.now() + 900;
       applySearchFilter();
       renderAll();
+      if (state.player && state.ytReady) {
+        try {
+          state.player.seekTo(Math.max(0, endSec || 0), true);
+          state.player.pauseVideo();
+        } catch (err) {}
+      }
+      updateRangeCards(clone);
+      renderEditor();
+      renderRows();
       saveStateToLocalStorage(state.sourceName || '브라우저 저장본');
       scheduleRowSync(clone);
       scheduleWorkspaceMetaSync();
-      setStatus('선택한 행 바로 아래에 복제했습니다.');
-      showToast('행 복제');
+      scheduleWorkspaceSessionSave();
+      setStatus('선택한 행 바로 아래에 복제했고, 새 행의 구간은 초기화했습니다.');
+      showToast('행 복제 · 구간 초기화');
     }
 
     async function deleteSelectedRow() {
@@ -2783,3 +2810,4 @@
   </script>
 </body>
 </html>
+
