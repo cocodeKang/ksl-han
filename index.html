@@ -677,6 +677,8 @@
             <button id="btnAddRow" class="primary">행 추가</button>
             <button id="btnDuplicateRow">행 복제</button>
             <button id="btnDeleteRow" class="danger">행 삭제</button>
+            <button id="btnToggleRandom">전체 랜덤 OFF (R)</button>
+            <button id="btnToggleExampleStudy">용례 학습 OFF</button>
             <div class="result-actions">
               <span class="small" id="resultCount">검색 결과 0개</span>
               <button id="btnMoreResults" class="ghost" style="display:none;">더 보기 +300</button>
@@ -723,8 +725,8 @@
                 <button id="btnSeekEnd">종료로 이동</button>
                 <button id="btnPreview" class="info">구간 미리보기</button>
                 <button id="btnLoopPreview">구간 반복 꺼짐</button>
-                <button id="btnBack5">-5초</button>
-                <button id="btnForward5">+5초</button>
+                <button id="btnBack5">이전 영상 (←)</button>
+                <button id="btnForward5">다음 영상 (→)</button>
                 <button id="btnToggleFullscreen">전체화면 (F)</button>
                 <button id="btnToggleMask">가림막 보이기/가리기 (X)</button>
                 <button id="btnAddMask">가림막 추가 (Shift+X)</button>
@@ -768,7 +770,7 @@
                 </div>
               </div>
               <div class="note">
-                링크가 바뀌면 새 영상을 자동 로드합니다. 구간 미리보기는 선택된 행의 시작~종료 시간 범위만 재생합니다. 검색은 5,000행 이상에서도 덜 버벅이도록 지연 입력 + 빠른 검색 인덱스 + 부분 렌더링으로 바꿨습니다.
+                링크가 바뀌면 새 영상을 자동 로드합니다. 구간 시작/종료가 설정된 행은 종료 지점에 도달하면 다음 영상으로 자동 이동합니다. 검색은 5,000행 이상에서도 덜 버벅이도록 지연 입력 + 빠른 검색 인덱스 + 부분 렌더링으로 바꿨습니다.
               </div>
             </div>
           </div>
@@ -786,7 +788,7 @@
             <li>재생 중 원하는 시점에서 <strong>현재시간 → 시작</strong>, <strong>현재시간 → 종료</strong> 버튼으로 구간 저장</li>
             <li>필요하면 뜻풀이·용례·수형·메모를 수정한 뒤 CSV 또는 엑셀로 다운로드</li>
             <li>한 번 저장한 데이터는 브라우저 저장소에 남아서 다음 실행 때 자동 복구</li>
-            <li>단축키: F 전체화면 / Space 재생·멈춤 / [ 시작 / ] 종료 / \ 초기화 / { 시작으로 / } 종료로 / ←→ ±5초 / Shift+←→ ±1초 / , . 프레임 이동 / &lt; &gt; 재생속도 / X 가림막 표시 / Shift+X 가림막 추가 / Q 표제어 / E 뜻풀이 / Shift+E 뜻풀이 편집 / A 용례 / Shift+A 용례 편집 / G 수형 / Shift+G 수형 편집 / P 구간 미리보기 / Shift+P 반복 / 0~9 재생 위치 이동 / Ctrl+E 행 복제 / Ctrl+F 검색창</li>
+            <li>단축키: F 전체화면 / Space 재생·멈춤 / [ 시작 / ] 종료 / \ 초기화 / { 시작으로 / } 종료로 / ← 이전 영상 / → 다음 영상 / Ctrl+←→ ±5초 / Shift+←→ ±1초 / , . 프레임 이동 / &lt; &gt; 재생속도 / X 가림막 표시 / Shift+X 가림막 추가 / Q 표제어 / E 뜻풀이 / Shift+E 뜻풀이 편집 / A 용례 / Shift+A 용례 편집 / G 수형 / Shift+G 수형 편집 / P 구간 미리보기 / Shift+P 반복 / R 전체 랜덤 ON/OFF / Ctrl+E 행 복제 / Ctrl+F 검색창</li>
           </ul>
         </section>
 
@@ -878,6 +880,10 @@
       renderLimit: SEARCH_RENDER_CHUNK,
       filteredRowIds: [],
       filteredRows: [],
+      randomMode: false,
+      randomOrderIds: [],
+      exampleStudyMode: false,
+      autoAdvanceLockUntil: 0,
       overlay: {
         visible: false,
         type: null,
@@ -918,6 +924,159 @@
 
     function clamp(num, min, max) {
       return Math.min(max, Math.max(min, num));
+    }
+
+    function shuffleArray(list) {
+      const arr = list.slice();
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    }
+
+    function hasExampleValue(row) {
+      return canonicalTrim(getCell(row, 'example')) !== '';
+    }
+
+    function getBaseOrderedRows() {
+      return state.rows.slice().sort((a, b) => Number(a._sort || 0) - Number(b._sort || 0));
+    }
+
+    function getWorkingRows() {
+      const baseRows = getBaseOrderedRows();
+      const scopedRows = state.exampleStudyMode ? baseRows.filter(hasExampleValue) : baseRows;
+      if (!state.randomMode) return scopedRows;
+
+      const idMap = new Map(scopedRows.map(row => [row._id, row]));
+      state.randomOrderIds = state.randomOrderIds.filter(id => idMap.has(id));
+      const existing = new Set(state.randomOrderIds);
+      const missing = scopedRows.filter(row => !existing.has(row._id)).map(row => row._id);
+      if (missing.length) state.randomOrderIds.push(...shuffleArray(missing));
+      return state.randomOrderIds.map(id => idMap.get(id)).filter(Boolean);
+    }
+
+    function refreshModeButtons() {
+      const randomBtn = $('#btnToggleRandom');
+      if (randomBtn) {
+        randomBtn.textContent = state.randomMode ? '전체 랜덤 ON (R)' : '전체 랜덤 OFF (R)';
+        randomBtn.classList.toggle('active', state.randomMode);
+      }
+      const studyBtn = $('#btnToggleExampleStudy');
+      if (studyBtn) {
+        studyBtn.textContent = state.exampleStudyMode ? '용례 학습 ON' : '용례 학습 OFF';
+        studyBtn.classList.toggle('active', state.exampleStudyMode);
+      }
+    }
+
+    function ensureSelectionWithinFilteredRows() {
+      const filtered = getFilteredRows();
+      if (!filtered.length) {
+        state.selectedRowId = null;
+        return;
+      }
+      if (!filtered.some(row => row._id === state.selectedRowId)) {
+        state.selectedRowId = filtered[0]._id;
+      }
+    }
+
+    function toggleRandomOrder() {
+      state.randomMode = !state.randomMode;
+      if (state.randomMode) {
+        state.randomOrderIds = shuffleArray(getWorkingRows().map(row => row._id));
+        showToast('전체 랜덤 켜짐');
+        setStatus('현재 목록 순서를 랜덤으로 섞었습니다.');
+      } else {
+        state.randomOrderIds = [];
+        showToast('전체 랜덤 꺼짐');
+        setStatus('현재 목록을 원래 순서로 되돌렸습니다.');
+      }
+      state.renderLimit = SEARCH_RENDER_CHUNK;
+      renderAll();
+      scheduleWorkspaceSessionSave();
+    }
+
+    function toggleExampleStudy() {
+      const next = !state.exampleStudyMode;
+      if (next && !state.rows.some(hasExampleValue)) {
+        showToast('용례 데이터가 있는 행이 없습니다.');
+        setStatus('용례 학습을 켤 수 없습니다. 용례 내용이 있는 행이 없습니다.', true);
+        return;
+      }
+      state.exampleStudyMode = next;
+      state.renderLimit = SEARCH_RENDER_CHUNK;
+      showToast(state.exampleStudyMode ? '용례 학습 켜짐' : '용례 학습 꺼짐');
+      setStatus(state.exampleStudyMode ? '용례가 있는 행만 대상으로 학습합니다.' : '전체 행 대상으로 돌아왔습니다.');
+      renderAll();
+      scheduleWorkspaceSessionSave();
+    }
+
+    function moveSelectionBy(step, { autoPlay = false, forceReload = true, toast = null } = {}) {
+      const filtered = getFilteredRows();
+      if (!filtered.length) {
+        showToast('이동할 영상이 없습니다.');
+        return false;
+      }
+      let idx = filtered.findIndex(row => row._id === state.selectedRowId);
+      if (idx < 0) idx = 0;
+      const nextIdx = clamp(idx + step, 0, filtered.length - 1);
+      if (nextIdx === idx && filtered[nextIdx]?._id === state.selectedRowId) {
+        if (step > 0) showToast('다음 영상 없음');
+        else if (step < 0) showToast('이전 영상 없음');
+        else if (toast) showToast(toast);
+        return false;
+      }
+      state.selectedRowId = filtered[nextIdx]._id;
+      renderRows();
+      renderEditor();
+      renderMasks();
+      loadSelectedRowToPlayer(forceReload, autoPlay);
+      scheduleWorkspaceSessionSave();
+      if (toast) showToast(toast);
+      return true;
+    }
+
+    function goToPreviousRow(autoPlay = false) {
+      return moveSelectionBy(-1, { autoPlay, toast: '이전 영상' });
+    }
+
+    function goToNextRow(autoPlay = false, reason = '다음 영상') {
+      return moveSelectionBy(1, { autoPlay, toast: reason });
+    }
+
+    function maybeAutoAdvanceFromRange(now) {
+      if (state.previewStopAt != null) return false;
+      if (Date.now() < state.autoAdvanceLockUntil) return false;
+      const row = getSelectedRow();
+      if (!row || !state.player || !state.ytReady) return false;
+      const start = parseTime(getCell(row, 'start'));
+      const end = parseTime(getCell(row, 'end'));
+      if (start == null || end == null || end <= start) return false;
+      let playerState = -1;
+      try { playerState = Number(state.player.getPlayerState?.() ?? -1); } catch (err) {}
+      if (playerState !== 1 && playerState !== 3) return false;
+      if (now + 0.05 < end) return false;
+      state.autoAdvanceLockUntil = Date.now() + 900;
+      const moved = goToNextRow(true, '구간 종료 → 다음 영상');
+      if (!moved) {
+        try { state.player.pauseVideo(); } catch (err) {}
+        showToast('마지막 영상입니다.');
+      }
+      return moved;
+    }
+
+    function computeInsertSortAfter(index) {
+      const current = state.rows[index];
+      const next = state.rows[index + 1];
+      const currentSort = Number(current?._sort ?? index + 1);
+      const nextSort = Number(next?._sort ?? currentSort + 1);
+      if (Number.isFinite(currentSort) && Number.isFinite(nextSort) && Math.abs(nextSort - currentSort) > 1e-9) {
+        return currentSort + ((nextSort - currentSort) / 2);
+      }
+      state.rows.forEach((row, idx) => { row._sort = idx + 1; });
+      const normalizedCurrent = Number(state.rows[index]?._sort ?? index + 1);
+      const normalizedNext = Number(state.rows[index + 1]?._sort ?? normalizedCurrent + 1);
+      return normalizedCurrent + ((normalizedNext - normalizedCurrent) / 2);
     }
 
     function ensureRowMeta(row) {
@@ -1102,6 +1261,9 @@
         scope: state.scope,
         query: state.query,
         workspaceId: state.cloud.workspaceId,
+        randomMode: state.randomMode,
+        exampleStudyMode: state.exampleStudyMode,
+        randomOrderIds: state.randomOrderIds,
         currentVideoId: state.currentVideoId || null,
         currentVideoTime: currentTime,
         updatedAt: serverTimestamp()
@@ -1238,6 +1400,9 @@
             state.query = sessionData.query;
             $('#searchInput').value = sessionData.query;
           }
+          state.randomMode = !!sessionData?.randomMode;
+          state.exampleStudyMode = !!sessionData?.exampleStudyMode;
+          state.randomOrderIds = Array.isArray(sessionData?.randomOrderIds) ? sessionData.randomOrderIds : state.randomOrderIds;
           renderAll();
           state.cloud.suppressRemote = false;
         });
@@ -1357,7 +1522,10 @@
           headers: state.headers,
           rows: state.rows.map(stripSearchState),
           sourceName: sourceLabel || state.sourceName || '브라우저 저장본',
-          workspaceId: state.cloud.workspaceId || 'default'
+          workspaceId: state.cloud.workspaceId || 'default',
+          randomMode: state.randomMode,
+          exampleStudyMode: state.exampleStudyMode,
+          randomOrderIds: state.randomOrderIds
         };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
         localStorage.setItem(SAVE_TS_KEY, String(Date.now()));
@@ -1380,6 +1548,9 @@
         state.rows = parsed.rows.map((r, idx) => buildRowSearchCache(ensureRowMeta({ ...r, _id: r._id || cryptoRandomId(), _sort: Number(r._sort ?? idx + 1) })));
         state.sourceName = parsed.sourceName || '브라우저 저장본';
         state.cloud.workspaceId = parsed.workspaceId || 'default';
+        state.randomMode = !!parsed.randomMode;
+        state.exampleStudyMode = !!parsed.exampleStudyMode;
+        state.randomOrderIds = Array.isArray(parsed.randomOrderIds) ? parsed.randomOrderIds : [];
         $('#workspaceIdInput').value = state.cloud.workspaceId;
         if (state.rows.length) state.selectedRowId = state.rows[0]._id;
         return true;
@@ -1422,12 +1593,13 @@
 
     function applySearchFilter() {
       const q = state.query.trim().toLowerCase();
+      const workingRows = getWorkingRows();
       if (!q) {
-        state.filteredRows = state.rows.slice();
+        state.filteredRows = workingRows.slice();
         state.filteredRowIds = state.filteredRows.map(row => row._id);
         return state.filteredRowIds;
       }
-      state.filteredRows = state.rows.filter(row => {
+      state.filteredRows = workingRows.filter(row => {
         const cache = row._search || buildRowSearchCache(row)._search;
         switch (state.scope) {
           case 'headword': return cache.headword.includes(q);
@@ -1796,6 +1968,7 @@
     function loadSelectedRowToPlayer(forceReload = false, autoPlayFromStart = false) {
       const row = getSelectedRow();
       if (!row || !state.player || !state.ytReady) return;
+      state.previewStopAt = null;
       const link = getCell(row, 'link');
       const videoId = extractYouTubeVideoId(link);
       if (!videoId) {
@@ -1958,7 +2131,7 @@
       if (!row) return;
       ensureRowMeta(row);
       const list = row._meta.masks;
-      list.forEach((mask, idx) => {
+      list.forEach((mask) => {
         const el = document.createElement('div');
         el.className = 'mask-item' + ((row._meta.masksVisible !== false && mask.visible !== false) ? ' visible' : '') + (mask.id === row._meta.activeMaskId ? ' selected' : '');
         el.dataset.maskId = mask.id;
@@ -1967,7 +2140,7 @@
         el.style.width = `${mask.width}%`;
         el.style.height = `${mask.height}%`;
         el.style.background = `rgba(0,0,0,${clamp((mask.opacity ?? 92) / 100, 0.1, 1)})`;
-        el.innerHTML = `<span class="mask-badge">${idx + 1}</span><span class="mask-handle"></span>`;
+        el.innerHTML = `<span class="mask-handle"></span>`;
         el.addEventListener('mousedown', beginMaskPointer);
         el.addEventListener('click', (ev) => {
           ev.stopPropagation();
@@ -2230,15 +2403,17 @@
     function duplicateSelectedRow() {
       const row = getSelectedRow();
       if (!row) return;
-      const clone = buildRowSearchCache(ensureRowMeta({ ...stripSearchState(row), _id: cryptoRandomId(), _sort: (state.rows[0]?._sort || 0) - 1 }));
-      state.rows.unshift(clone);
+      const idx = state.rows.findIndex(r => r._id === row._id);
+      const insertAt = idx >= 0 ? idx : state.rows.length - 1;
+      const clone = buildRowSearchCache(ensureRowMeta({ ...stripSearchState(row), _id: cryptoRandomId(), _sort: computeInsertSortAfter(insertAt) }));
+      state.rows.splice(insertAt + 1, 0, clone);
       state.selectedRowId = clone._id;
       applySearchFilter();
       renderAll();
       saveStateToLocalStorage(state.sourceName || '브라우저 저장본');
       scheduleRowSync(clone);
       scheduleWorkspaceMetaSync();
-      setStatus('선택 행을 복제했습니다.');
+      setStatus('선택한 행 바로 아래에 복제했습니다.');
       showToast('행 복제');
     }
 
@@ -2261,7 +2436,9 @@
 
     function renderAll() {
       updateTopInfo();
+      refreshModeButtons();
       applySearchFilter();
+      ensureSelectionWithinFilteredRows();
       [...$('#scopeRow').querySelectorAll('button[data-scope]')].forEach(btn => {
         btn.classList.toggle('active', btn.dataset.scope === state.scope);
       });
@@ -2340,6 +2517,8 @@
       $('#btnAddRow').onclick = addRow;
       $('#btnDuplicateRow').onclick = duplicateSelectedRow;
       $('#btnDeleteRow').onclick = deleteSelectedRow;
+      $('#btnToggleRandom').onclick = toggleRandomOrder;
+      $('#btnToggleExampleStudy').onclick = toggleExampleStudy;
 
       $('#btnSetStart').onclick = () => setSelectedTime('start');
       $('#btnSetEnd').onclick = () => setSelectedTime('end');
@@ -2352,18 +2531,10 @@
         showToast(state.loopPreview ? '구간 반복 켜짐' : '구간 반복 꺼짐');
       };
       $('#btnBack5').onclick = () => {
-        if (!state.player || !state.ytReady) return;
-        const now = Number(state.player.getCurrentTime?.() || 0);
-        state.player.seekTo(Math.max(0, now - 5), true);
-        showToast('-5초 이동');
-        scheduleWorkspaceSessionSave();
+        goToPreviousRow(true);
       };
       $('#btnForward5').onclick = () => {
-        if (!state.player || !state.ytReady) return;
-        const now = Number(state.player.getCurrentTime?.() || 0);
-        state.player.seekTo(now + 5, true);
-        showToast('+5초 이동');
-        scheduleWorkspaceSessionSave();
+        goToNextRow(true);
       };
       $('#playbackRateSelect').addEventListener('change', (e) => {
         setPlaybackRate(Number(e.target.value || 1));
@@ -2441,7 +2612,19 @@
         if (e.key === 'g' || e.key === 'G') { e.preventDefault(); toggleTextPopup('form'); return; }
         if (e.key === 'Escape') { e.preventDefault(); closeTextPopup(); return; }
 
-        if (e.key === 'ArrowRight' && !e.shiftKey) {
+        if (e.key === 'r' || e.key === 'R') { e.preventDefault(); toggleRandomOrder(); return; }
+
+        if (e.key === 'ArrowRight' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+          e.preventDefault();
+          goToNextRow(true);
+          return;
+        }
+        if (e.key === 'ArrowLeft' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+          e.preventDefault();
+          goToPreviousRow(true);
+          return;
+        }
+        if (e.key === 'ArrowRight' && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
           e.preventDefault();
           if (state.player && state.ytReady) {
             const now = Number(state.player.getCurrentTime?.() || 0);
@@ -2451,7 +2634,7 @@
           }
           return;
         }
-        if (e.key === 'ArrowLeft' && !e.shiftKey) {
+        if (e.key === 'ArrowLeft' && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
           e.preventDefault();
           if (state.player && state.ytReady) {
             const now = Number(state.player.getCurrentTime?.() || 0);
@@ -2564,7 +2747,9 @@
           state.player.pauseVideo();
           state.previewStopAt = null;
         }
+        return;
       }
+      maybeAutoAdvanceFromRange(now);
     }, 120);
 
     function init() {
