@@ -205,6 +205,7 @@
 
     .table-scroll {
       min-height: 0;
+      height: 484px;
       overflow: auto;
       border: 1px solid rgba(148,163,184,.18);
       border-radius: 14px;
@@ -215,15 +216,20 @@
       width: 100%;
       border-collapse: collapse;
       min-width: 860px;
+      table-layout: fixed;
     }
 
     th, td {
-      padding: 10px 10px;
+      padding: 0 10px;
       border-bottom: 1px solid rgba(148,163,184,.12);
       text-align: left;
-      vertical-align: top;
+      vertical-align: middle;
       font-size: 13px;
       line-height: 1.45;
+      height: 44px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     th {
@@ -669,6 +675,15 @@
             <input id="searchInput" type="search" placeholder="예: [다] / 학생들이 빠짐없이 / youtube 링크 일부" />
             <button id="btnClearSearch" class="ghost">검색 지우기</button>
           </div>
+          <div class="search-grid" style="grid-template-columns: 180px 1fr; margin-top:8px;">
+            <select id="categoryFilter">
+              <option value="ALL">모두</option>
+              <option value="SK">SK</option>
+              <option value="KSL1">KSL1</option>
+              <option value="KSL2" selected>KSL2</option>
+            </select>
+            <div class="note" style="margin:0; align-self:center;">구분 필터를 바꾸면 해당 구분의 영상만 목록에 표시됩니다.</div>
+          </div>
           <div class="note" style="margin-top:8px;">검색 결과를 클릭하면 오른쪽 편집창으로 불러옵니다.</div>
         </section>
 
@@ -788,7 +803,7 @@
             <li>재생 중 원하는 시점에서 <strong>현재시간 → 시작</strong>, <strong>현재시간 → 종료</strong> 버튼으로 구간 저장</li>
             <li>필요하면 뜻풀이·용례·수형·메모를 수정한 뒤 CSV 또는 엑셀로 다운로드</li>
             <li>한 번 저장한 데이터는 브라우저 저장소에 남아서 다음 실행 때 자동 복구</li>
-            <li>단축키: F 전체화면 / Space 재생·멈춤 / [ 시작 / ] 종료 / \ 초기화 / { 시작으로 / } 종료로 / ← 이전 영상 / → 다음 영상 / Ctrl+←→ ±5초 / Shift+←→ ±1초 / , . 프레임 이동 / &lt; &gt; 재생속도 / X 가림막 표시 / Shift+X 가림막 추가 / Q 표제어 / E 뜻풀이 / Shift+E 뜻풀이 편집 / Ctrl+E 뜻풀이 초기화 편집 / A 용례 / Shift+A 용례 편집 / Ctrl+A 용례 초기화 편집 / G 수형 / Shift+G 수형 편집 / Ctrl+G 수형 초기화 편집 / P 구간 미리보기 / Shift+P 반복 / R 전체 랜덤 ON/OFF / Ctrl+R 행 복제 / Ctrl+F 검색창</li>
+            <li>단축키: F 전체화면 / Space 재생·멈춤 / [ 시작 / ] 종료 / \ 초기화 / { 시작으로 / } 종료로 / ← 이전 영상 / → 다음 영상 / Ctrl+←→ ±5초 / Shift+←→ ±1초 / , . 프레임 이동 / &lt; &gt; 재생속도 / X 가림막 표시 / Shift+X 가림막 추가 / Q 표제어 / E 뜻풀이 / Shift+E 뜻풀이 편집 / Ctrl+E 뜻풀이 초기화 편집 / A 용례 / Shift+A 용례 편집 / Ctrl+A(입력창에서는 전체선택 / 팝업 외부에서는 용례 초기화 편집) / G 수형 / Shift+G 수형 편집 / Ctrl+G 수형 초기화 편집 / P 구간 미리보기 / Shift+P 반복 / R 전체 랜덤 ON/OFF / Ctrl+R 행 복제 / Ctrl+F 검색창</li>
           </ul>
         </section>
 
@@ -871,6 +886,7 @@
       selectedRowId: null,
       scope: 'headword',
       query: '',
+      category: 'KSL2',
       sourceName: '저장본 없음',
       loopPreview: false,
       previewStopAt: null,
@@ -1288,6 +1304,7 @@
         selectedRowId: state.selectedRowId || null,
         scope: state.scope,
         query: state.query,
+        category: state.category,
         workspaceId: state.cloud.workspaceId,
         randomMode: state.randomMode,
         exampleStudyMode: state.exampleStudyMode,
@@ -1429,6 +1446,7 @@
             state.query = sessionData.query;
             $('#searchInput').value = sessionData.query;
           }
+          state.category = ['ALL', 'SK', 'KSL1', 'KSL2'].includes(sessionData?.category) ? sessionData.category : state.category;
           state.randomMode = !!sessionData?.randomMode;
           state.exampleStudyMode = !!sessionData?.exampleStudyMode;
           state.randomOrderIds = Array.isArray(sessionData?.randomOrderIds) ? sessionData.randomOrderIds : state.randomOrderIds;
@@ -1528,6 +1546,35 @@
       return state.headers.find(h => regex.test(String(h.label).replace(/\s+/g, '')));
     }
 
+    function getHeaderKeysByLabelMatch(regex) {
+      return state.headers
+        .filter(h => regex.test(String(h.label).replace(/\s+/g, '')))
+        .map(h => h.key);
+    }
+
+    function normalizeCategoryValue(v) {
+      return String(v ?? '')
+        .trim()
+        .toUpperCase()
+        .replace(/[\s_-]+/g, '');
+    }
+
+    function getCategoryCell(row) {
+      const keys = getHeaderKeysByLabelMatch(/^(구분|분류|카테고리)$/i);
+      if (!keys.length) return '';
+      const orderedKeys = keys.length >= 2 ? [keys[1], ...keys.slice(2), keys[0]] : keys;
+      for (const key of orderedKeys) {
+        const value = String(row?.[key] ?? '').trim();
+        if (value) return value;
+      }
+      return '';
+    }
+
+    function rowMatchesCategory(row) {
+      if (state.category === 'ALL') return true;
+      return normalizeCategoryValue(getCategoryCell(row)) === state.category;
+    }
+
     function getFieldKey(type) {
       const map = {
         number: /^(번호|no|id)$/i,
@@ -1561,6 +1608,7 @@
           rows: state.rows.map(stripSearchState),
           sourceName: sourceLabel || state.sourceName || '브라우저 저장본',
           workspaceId: state.cloud.workspaceId || 'default',
+          category: state.category,
           randomMode: state.randomMode,
           exampleStudyMode: state.exampleStudyMode,
           randomOrderIds: state.randomOrderIds,
@@ -1587,6 +1635,7 @@
         state.rows = parsed.rows.map((r, idx) => buildRowSearchCache(ensureRowMeta({ ...r, _id: r._id || cryptoRandomId(), _sort: Number(r._sort ?? idx + 1) })));
         state.sourceName = parsed.sourceName || '브라우저 저장본';
         state.cloud.workspaceId = parsed.workspaceId || 'default';
+        state.category = ['ALL', 'SK', 'KSL1', 'KSL2'].includes(parsed.category) ? parsed.category : 'KSL2';
         state.randomMode = !!parsed.randomMode;
         state.exampleStudyMode = !!parsed.exampleStudyMode;
         state.randomOrderIds = Array.isArray(parsed.randomOrderIds) ? parsed.randomOrderIds : [];
@@ -1640,7 +1689,7 @@
 
     function applySearchFilter() {
       const q = state.query.trim().toLowerCase();
-      const workingRows = getWorkingRows();
+      const workingRows = getWorkingRows().filter(rowMatchesCategory);
       if (!q) {
         state.filteredRows = workingRows.slice();
         state.filteredRowIds = state.filteredRows.map(row => row._id);
@@ -1831,24 +1880,21 @@
 
     function renderRows() {
       const filtered = getFilteredRows();
-      const visible = filtered.slice(0, state.renderLimit);
-      $('#resultCount').textContent = filtered.length > visible.length
-        ? `검색 결과 ${filtered.length}개 · 현재 ${visible.length}개 표시`
-        : `검색 결과 ${filtered.length}개`;
-      $('#btnMoreResults').style.display = filtered.length > visible.length ? 'inline-flex' : 'none';
+      $('#resultCount').textContent = `검색 결과 ${filtered.length}개`;
+      $('#btnMoreResults').style.display = 'none';
       if (!filtered.length) {
         rowsTbody.innerHTML = `<tr><td colspan="6" class="muted">검색 결과가 없습니다.</td></tr>`;
         return;
       }
-      rowsTbody.innerHTML = visible.map(row => {
+      rowsTbody.innerHTML = filtered.map(row => {
         const selected = row._id === state.selectedRowId ? 'selected' : '';
         return `
           <tr class="${selected}" data-row-id="${escapeHtml(row._id)}">
-            <td>${escapeHtml(getCell(row, 'number') || '')}</td>
-            <td>${escapeHtml(getCell(row, 'headword') || '')}</td>
+            <td title="${escapeHtml(getCell(row, 'number') || '')}">${escapeHtml(getCell(row, 'number') || '')}</td>
+            <td title="${escapeHtml(getCell(row, 'headword') || '')}">${escapeHtml(getCell(row, 'headword') || '')}</td>
             <td class="truncate" title="${escapeHtml(getCell(row, 'example') || '')}">${escapeHtml(getCell(row, 'example') || '')}</td>
-            <td>${escapeHtml(getCell(row, 'start') || '')}</td>
-            <td>${escapeHtml(getCell(row, 'end') || '')}</td>
+            <td title="${escapeHtml(getCell(row, 'start') || '')}">${escapeHtml(getCell(row, 'start') || '')}</td>
+            <td title="${escapeHtml(getCell(row, 'end') || '')}">${escapeHtml(getCell(row, 'end') || '')}</td>
             <td class="truncate" title="${escapeHtml(getCell(row, 'link') || '')}">${escapeHtml(getCell(row, 'link') || '')}</td>
           </tr>
         `;
@@ -2526,6 +2572,7 @@
       [...$('#scopeRow').querySelectorAll('button[data-scope]')].forEach(btn => {
         btn.classList.toggle('active', btn.dataset.scope === state.scope);
       });
+      if ($('#categoryFilter')) $('#categoryFilter').value = state.category;
       renderRows();
       renderEditor();
       syncMaskUI();
@@ -2574,6 +2621,17 @@
         renderRows();
         scheduleWorkspaceSessionSave();
       };
+      $('#categoryFilter').addEventListener('change', (e) => {
+        state.category = e.target.value || 'ALL';
+        applySearchFilter();
+        ensureSelectionWithinFilteredRows();
+        renderRows();
+        renderEditor();
+        renderMasks();
+        const row = getSelectedRow();
+        if (row) loadSelectedRowToPlayer();
+        scheduleWorkspaceSessionSave();
+      });
       [...$('#scopeRow').querySelectorAll('button[data-scope]')].forEach(btn => {
         btn.addEventListener('click', () => {
           state.scope = btn.dataset.scope;
@@ -2634,6 +2692,11 @@
       bindMaskInputs();
 
       document.addEventListener('keydown', (e) => {
+        const tag = e.target?.tagName;
+        const inField = !!(e.target && (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag) || e.target?.isContentEditable));
+        if (inField && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+          return;
+        }
         if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
           e.preventDefault();
           saveStateToLocalStorage(state.sourceName || '브라우저 저장본');
@@ -2668,8 +2731,6 @@
           enterPopupEdit('form', { clearOnOpen: true });
           return;
         }
-        const tag = e.target?.tagName;
-        const inField = !!(e.target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(tag));
         if (inField) {
           if (e.key === 'Escape') {
             e.preventDefault();
