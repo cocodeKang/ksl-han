@@ -2403,6 +2403,10 @@
       window.addEventListener('mouseup', onUp);
     }
 
+    function isBlankExportValue(value) {
+      return value == null || (typeof value === 'string' && value.trim() === '');
+    }
+
     function exportWorkbook(kind) {
       if (!state.headers.length) {
         setStatus('내보낼 데이터가 없습니다.', true);
@@ -2417,7 +2421,10 @@
         downloadBlob(blob, fileBaseName() + '.json');
         return;
       }
-      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      const aoaForSheet = kind === 'xlsx'
+        ? aoa.map((row, rowIndex) => row.map(value => rowIndex === 0 ? value : (isBlankExportValue(value) ? undefined : value)))
+        : aoa;
+      const ws = XLSX.utils.aoa_to_sheet(aoaForSheet);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'data');
       if (kind === 'csv') {
