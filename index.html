@@ -405,7 +405,8 @@
 
     .text-popup.type-example,
     .text-popup.type-definition,
-    .text-popup.type-form {
+    .text-popup.type-form,
+    .text-popup.type-note {
       width: min(1040px, calc(100% - 24px));
     }
 
@@ -750,6 +751,7 @@
                 <button id="btnShowDefinition">뜻풀이 팝업 (E)</button>
                 <button id="btnShowExample">용례 팝업/편집 (A)</button>
                 <button id="btnShowForm">수형 팝업/편집 (G)</button>
+                <button id="btnShowNote">메모 팝업/편집 (M)</button>
               </div>
               <div class="field">
                 <label>재생 속도</label>
@@ -803,7 +805,7 @@
             <li>재생 중 원하는 시점에서 <strong>현재시간 → 시작</strong>, <strong>현재시간 → 종료</strong> 버튼으로 구간 저장</li>
             <li>필요하면 뜻풀이·용례·수형·메모를 수정한 뒤 CSV 또는 엑셀로 다운로드</li>
             <li>한 번 저장한 데이터는 브라우저 저장소에 남아서 다음 실행 때 자동 복구</li>
-            <li>단축키: F 전체화면 / Space 재생·멈춤 / [ 시작 / ] 종료 / \ 초기화 / { 시작으로 / } 종료로 / ← 이전 영상 / → 다음 영상 / Ctrl+←→ ±5초 / Shift+←→ ±1초 / , . 프레임 이동 / &lt; &gt; 재생속도 / X 가림막 표시 / Shift+X 가림막 추가 / Q 표제어 / E 뜻풀이 / Shift+E 뜻풀이 편집 / Ctrl+E 뜻풀이 초기화 편집 / A 용례 / Shift+A 용례 편집 / Ctrl+A(입력창에서는 전체선택 / 팝업 외부에서는 용례 초기화 편집) / G 수형 / Shift+G 수형 편집 / Ctrl+G 수형 초기화 편집 / P 구간 미리보기 / Shift+P 반복 / R 전체 랜덤 ON/OFF / Ctrl+R 행 복제 / Ctrl+F 검색창</li>
+            <li>단축키: F 전체화면 / Space 재생·멈춤 / [ 시작 / ] 종료 / \ 초기화 / { 시작으로 / } 종료로 / ← 이전 영상 / → 다음 영상 / Ctrl+←→ ±5초 / Shift+←→ ±1초 / , . 프레임 이동 / &lt; &gt; 재생속도 / X 가림막 표시 / Shift+X 가림막 추가 / Q 표제어 / E 뜻풀이 / Shift+E 뜻풀이 편집 / Ctrl+E 뜻풀이 초기화 편집 / A 용례 / Shift+A 용례 편집 / Ctrl+A(입력창에서는 전체선택 / 팝업 외부에서는 용례 초기화 편집) / G 수형 / Shift+G 수형 편집 / Ctrl+G 수형 초기화 편집 / M 메모 / Shift+M 메모 편집 / Ctrl+M 메모 초기화 편집 / P 구간 미리보기 / Shift+P 반복 / R 전체 랜덤 ON/OFF / Ctrl+R 행 복제 / Ctrl+F 검색창</li>
           </ul>
         </section>
 
@@ -1495,9 +1497,10 @@
         headword: normalizeForSearch(getCell(row, 'headword')),
         example: normalizeForSearch(getCell(row, 'example')),
         link: normalizeForSearch(getCell(row, 'link')),
-        definition: normalizeForSearch(getCell(row, 'definition'))
+        definition: normalizeForSearch(getCell(row, 'definition')),
+        note: normalizeForSearch(getCell(row, 'note'))
       };
-      row._search.all = [row._search.headword, row._search.example, row._search.link, row._search.definition].join('\n');
+      row._search.all = [row._search.headword, row._search.example, row._search.link, row._search.definition, row._search.note].join('\n');
       return row;
     }
 
@@ -1719,7 +1722,7 @@
     function getOverlayFieldInfo(type) {
       const row = getSelectedRow();
       if (!row || !type) return null;
-      const labelMap = { headword: '표제어', definition: '뜻풀이', example: '용례', form: '수형' };
+      const labelMap = { headword: '표제어', definition: '뜻풀이', example: '용례', form: '수형', note: '메모' };
       const value = getCell(row, type) || '';
       return {
         row,
@@ -1814,20 +1817,20 @@
       if (!el) return;
       const info = getOverlayFieldInfo(state.overlay.type);
       if (!state.overlay.visible || !info) {
-        el.classList.remove('visible', 'type-headword', 'type-definition', 'type-example', 'type-form');
+        el.classList.remove('visible', 'type-headword', 'type-definition', 'type-example', 'type-form', 'type-note');
         el.setAttribute('aria-hidden', 'true');
         el.innerHTML = '';
         return;
       }
       const currentValue = info.value || '';
-      const editableTypes = new Set(['example', 'definition', 'form']);
+      const editableTypes = new Set(['example', 'definition', 'form', 'note']);
       const isEditable = editableTypes.has(info.type);
-      const hotkeyMap = { headword: 'Q', definition: 'E', example: 'A', form: 'G' };
+      const hotkeyMap = { headword: 'Q', definition: 'E', example: 'A', form: 'G', note: 'M' };
       const hint = isEditable
         ? (state.overlay.editMode ? `Enter 저장 · Shift+Enter 줄바꿈 · Shift+${hotkeyMap[info.type] || ''} 초기화 · Esc 닫기` : `Enter 또는 ${hotkeyMap[info.type] || ''} 닫기 · Shift+${hotkeyMap[info.type] || ''} 편집 · Ctrl+${hotkeyMap[info.type] || ''} 초기화 편집`)
         : 'Esc 닫기';
 
-      el.classList.remove('type-headword', 'type-definition', 'type-example', 'type-form');
+      el.classList.remove('type-headword', 'type-definition', 'type-example', 'type-form', 'type-note');
       el.classList.add('visible', `type-${info.type}`);
       el.setAttribute('aria-hidden', 'false');
       el.innerHTML = `
@@ -2689,6 +2692,7 @@
       $('#btnShowDefinition').onclick = () => toggleTextPopup('definition');
       $('#btnShowExample').onclick = () => toggleTextPopup('example');
       $('#btnShowForm').onclick = () => toggleTextPopup('form');
+      $('#btnShowNote').onclick = () => toggleTextPopup('note');
       bindMaskInputs();
 
       document.addEventListener('keydown', (e) => {
@@ -2731,6 +2735,11 @@
           enterPopupEdit('form', { clearOnOpen: true });
           return;
         }
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'm') {
+          e.preventDefault();
+          enterPopupEdit('note', { clearOnOpen: true });
+          return;
+        }
         if (inField) {
           if (e.key === 'Escape') {
             e.preventDefault();
@@ -2748,6 +2757,7 @@
         if (e.shiftKey && (e.key === 'A' || e.key === 'a')) { e.preventDefault(); enterPopupEdit('example'); return; }
         if (e.shiftKey && (e.key === 'E' || e.key === 'e')) { e.preventDefault(); enterPopupEdit('definition'); return; }
         if (e.shiftKey && (e.key === 'G' || e.key === 'g')) { e.preventDefault(); enterPopupEdit('form'); return; }
+        if (e.shiftKey && (e.key === 'M' || e.key === 'm')) { e.preventDefault(); enterPopupEdit('note'); return; }
         if (e.shiftKey && (e.key === 'X' || e.key === 'x')) { e.preventDefault(); addMask(); return; }
         if (e.shiftKey && (e.key === 'P' || e.key === 'p')) {
           e.preventDefault();
@@ -2770,6 +2780,7 @@
         if (e.key === 'a' || e.key === 'A') { e.preventDefault(); toggleTextPopup('example'); return; }
         if (e.key === 'e' || e.key === 'E') { e.preventDefault(); toggleTextPopup('definition'); return; }
         if (e.key === 'g' || e.key === 'G') { e.preventDefault(); toggleTextPopup('form'); return; }
+        if (e.key === 'm' || e.key === 'M') { e.preventDefault(); toggleTextPopup('note'); return; }
         if (e.key === 'Escape') { e.preventDefault(); closeTextPopup(); return; }
 
         if (e.key === 'r' || e.key === 'R') { e.preventDefault(); toggleRandomOrder(); return; }
