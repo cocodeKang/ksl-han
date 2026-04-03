@@ -452,6 +452,14 @@
       line-height: 1.5;
     }
 
+    .text-popup.type-example .popup-body {
+      text-align: center;
+    }
+
+    .text-popup.type-example .popup-body.editing textarea {
+      text-align: center;
+    }
+
     .popup-body.editing {
       padding: 18px;
     }
@@ -1732,6 +1740,14 @@
       };
     }
 
+    function sanitizeOverlayValue(type, value) {
+      const raw = String(value ?? '');
+      if (type === 'example') {
+        return raw.replace(/^[\s\uFEFF\xA0]+/, '');
+      }
+      return raw;
+    }
+
     function closeTextPopup() {
       state.overlay.visible = false;
       state.overlay.type = null;
@@ -1797,11 +1813,12 @@
       const info = getOverlayFieldInfo(state.overlay.type);
       const editor = $('#popupEditor');
       if (!info || !editor) return;
-      setCell(info.row, info.type, editor.value);
+      const nextValue = sanitizeOverlayValue(info.type, editor.value);
+      setCell(info.row, info.type, nextValue);
 
       const bindKey = getFieldKey(info.type);
       const bindInput = bindKey ? editorArea.querySelector(`[data-bind-key="${CSS.escape(bindKey)}"]`) : null;
-      if (bindInput) bindInput.value = editor.value;
+      if (bindInput) bindInput.value = nextValue;
 
       buildRowSearchCache(info.row);
       queueLightRefresh();
@@ -1822,7 +1839,7 @@
         el.innerHTML = '';
         return;
       }
-      const currentValue = info.value || '';
+      const currentValue = sanitizeOverlayValue(info.type, info.value || '');
       const editableTypes = new Set(['example', 'definition', 'form', 'note']);
       const isEditable = editableTypes.has(info.type);
       const hotkeyMap = { headword: 'Q', definition: 'E', example: 'A', form: 'G', note: 'M' };
