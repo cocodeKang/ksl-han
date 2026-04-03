@@ -263,6 +263,13 @@
       align-items: start;
     }
 
+    .player-main {
+      display: grid;
+      gap: 8px;
+      align-content: start;
+      min-height: 0;
+    }
+
     .video-shell {
       position: relative;
       border-radius: 16px;
@@ -581,9 +588,9 @@
 
     .range-view {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 8px;
-      margin-top: 6px;
+      margin-top: 0;
     }
 
     .range-view .card {
@@ -736,11 +743,18 @@
         <section class="panel">
           <h2>플레이어 / 구간 캡처</h2>
           <div class="player-box">
-            <div class="video-shell" id="videoShell">
-              <div id="player"></div>
-              <div id="maskLayer" class="mask-layer" aria-hidden="true"></div>
-              <div id="textPopup" class="text-popup" aria-hidden="true"></div>
-              <div id="toastBox" class="toast" aria-hidden="true"></div>
+            <div class="player-main">
+              <div class="video-shell" id="videoShell">
+                <div id="player"></div>
+                <div id="maskLayer" class="mask-layer" aria-hidden="true"></div>
+                <div id="textPopup" class="text-popup" aria-hidden="true"></div>
+                <div id="toastBox" class="toast" aria-hidden="true"></div>
+              </div>
+              <div class="range-view">
+                <div class="card"><div class="small">구간 시작</div><div id="rangeStartView">-</div></div>
+                <div class="card"><div class="small">구간 종료</div><div id="rangeEndView">-</div></div>
+                <div class="card"><div class="small">구간 길이</div><div id="rangeLengthView">-</div></div>
+              </div>
             </div>
             <div class="player-side">
               <div class="time-card">
@@ -805,11 +819,6 @@
               </div>
             </div>
           </div>
-          <div class="range-view">
-            <div class="card"><div class="small">구간 시작</div><div id="rangeStartView">-</div></div>
-            <div class="card"><div class="small">구간 종료</div><div id="rangeEndView">-</div></div>
-            <div class="card"><div class="small">구간 길이</div><div id="rangeLengthView">-</div></div>
-          </div>
         </section>
 
         <section class="panel help">
@@ -819,7 +828,7 @@
             <li>재생 중 원하는 시점에서 <strong>현재시간 → 시작</strong>, <strong>현재시간 → 종료</strong> 버튼으로 구간 저장</li>
             <li>필요하면 뜻풀이·용례·수형·메모를 수정한 뒤 CSV 또는 엑셀로 다운로드</li>
             <li>한 번 저장한 데이터는 브라우저 저장소에 남아서 다음 실행 때 자동 복구</li>
-            <li>단축키: F 전체화면 / Space 재생·멈춤 / [ 시작 / ] 종료 / \ 초기화 / { 시작으로 / } 종료로 / ← 이전 영상 / → 다음 영상 / Ctrl+←→ ±5초 / Shift+←→ ±1초 / , . 프레임 이동 / &lt; &gt; 재생속도 / X 가림막 표시 / Shift+X 가림막 추가 / Q 표제어 / E 뜻풀이 / Shift+E 뜻풀이 편집 / Ctrl+E 뜻풀이 초기화 편집 / A 용례 / Shift+A 용례 편집 / Ctrl+A(입력창에서는 전체선택 / 팝업 외부에서는 용례 초기화 편집) / G 수형 / Shift+G 수형 편집 / Ctrl+G 수형 초기화 편집 / M 메모 / Shift+M 메모 편집 / Ctrl+M 메모 초기화 편집 / P 구간 미리보기 / Shift+P 반복 / R 전체 랜덤 ON/OFF / Ctrl+R 행 복제(구간·용례·메모 초기화) / Ctrl+F 검색창</li>
+            <li>단축키: F 전체화면 / Space 재생·멈춤 / [ 시작 / ] 종료 / \ 초기화 / { 시작으로 / } 종료로 / ← 이전 영상 / → 다음 영상 / Ctrl+←→ ±5초 / Shift+←→ ±1초 / , . 프레임 이동 / &lt; &gt; 재생속도 / X 가림막 표시 / Shift+X 가림막 추가 / Q 표제어 / E 뜻풀이 / Shift+E 뜻풀이 편집 / Ctrl+E 뜻풀이 초기화 편집 / A 용례 / Shift+A 용례 편집 / Ctrl+A(입력창에서는 전체선택 / 팝업 외부에서는 용례 초기화 편집) / G 수형 / Shift+G 수형 편집 / Ctrl+G 수형 초기화 편집 / M 메모 / Shift+M 메모 편집 / Ctrl+M 메모 초기화 편집 / P 구간 미리보기 / Shift+P 반복 / R 전체 랜덤 ON/OFF / Ctrl+R 행 복제 / Delete 행 삭제(구간·용례·메모 초기화) / Ctrl+F 검색창</li>
           </ul>
         </section>
 
@@ -2795,6 +2804,11 @@
             e.preventDefault();
             closeTextPopup();
           }
+          return;
+        }
+        if (e.key === 'Delete') {
+          e.preventDefault();
+          deleteSelectedRow();
           return;
         }
 
