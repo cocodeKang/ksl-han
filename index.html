@@ -452,12 +452,18 @@
       line-height: 1.5;
     }
 
-    .text-popup.type-example .popup-body {
+    .text-popup.type-definition .popup-body,
+    .text-popup.type-example .popup-body,
+    .text-popup.type-form .popup-body,
+    .text-popup.type-note .popup-body {
       text-align: center;
     }
 
-    .text-popup.type-example .popup-body.editing textarea {
-      text-align: center;
+    .text-popup.type-definition .popup-body.editing textarea,
+    .text-popup.type-example .popup-body.editing textarea,
+    .text-popup.type-form .popup-body.editing textarea,
+    .text-popup.type-note .popup-body.editing textarea {
+      text-align: left;
     }
 
     .popup-body.editing {
@@ -1740,12 +1746,29 @@
       };
     }
 
+    function trimLeadingDisplaySpace(value) {
+      return String(value ?? '').replace(/^[\s\uFEFF\xA0]+/, '');
+    }
+
+    function shouldTrimLeadingForOverlayType(type) {
+      return ['definition', 'example', 'form', 'note'].includes(type);
+    }
+
+    function shouldTrimLeadingForKey(key) {
+      return ['definition', 'example', 'form', 'note']
+        .map(getFieldKey)
+        .filter(Boolean)
+        .includes(key);
+    }
+
     function sanitizeOverlayValue(type, value) {
       const raw = String(value ?? '');
-      if (type === 'example') {
-        return raw.replace(/^[\s\uFEFF\xA0]+/, '');
-      }
-      return raw;
+      return shouldTrimLeadingForOverlayType(type) ? trimLeadingDisplaySpace(raw) : raw;
+    }
+
+    function sanitizeFieldValueByKey(key, value) {
+      const raw = String(value ?? '');
+      return shouldTrimLeadingForKey(key) ? trimLeadingDisplaySpace(raw) : raw;
     }
 
     function closeTextPopup() {
@@ -1846,6 +1869,9 @@
       const hint = isEditable
         ? (state.overlay.editMode ? `Enter 저장 · Shift+Enter 줄바꿈 · Shift+${hotkeyMap[info.type] || ''} 초기화 · Esc 닫기` : `Enter 또는 ${hotkeyMap[info.type] || ''} 닫기 · Shift+${hotkeyMap[info.type] || ''} 편집 · Ctrl+${hotkeyMap[info.type] || ''} 초기화 편집`)
         : 'Esc 닫기';
+      const popupBodyContent = state.overlay.editMode
+        ? `<textarea id="popupEditor">${escapeHtml(currentValue)}</textarea>`
+        : escapeHtml(currentValue || '(내용 없음)');
 
       el.classList.remove('type-headword', 'type-definition', 'type-example', 'type-form', 'type-note');
       el.classList.add('visible', `type-${info.type}`);
@@ -1863,11 +1889,7 @@
               <button id="btnPopupClose" class="ghost">닫기</button>
             </div>
           </div>
-          <div class="popup-body ${state.overlay.editMode ? 'editing' : ''}">
-            ${state.overlay.editMode
-              ? `<textarea id="popupEditor">${escapeHtml(currentValue)}</textarea>`
-              : `${escapeHtml(currentValue || '(내용 없음)')}`}
-          </div>
+          <div class="popup-body ${state.overlay.editMode ? 'editing' : ''}">${popupBodyContent}</div>
           ${isEditable && state.overlay.editMode ? '<div class="popup-actions"><button id="btnPopupSaveBottom" class="primary">Enter로 저장</button><button id="btnPopupCancelEdit">편집 취소</button></div>' : ''}
         </div>
       `;
@@ -1973,7 +1995,9 @@
         const tag = el.tagName.toLowerCase();
         const eventName = tag === 'textarea' || tag === 'input' ? 'input' : 'change';
         el.addEventListener(eventName, () => {
-          row[key] = el.value;
+          const nextValue = sanitizeFieldValueByKey(key, el.value);
+          if (nextValue !== el.value) el.value = nextValue;
+          row[key] = nextValue;
           queueLightRefresh();
         });
       });
@@ -1993,7 +2017,7 @@
     }
 
     function renderField(row, field) {
-      const value = row[field.key] ?? '';
+      const value = sanitizeFieldValueByKey(field.key, row[field.key] ?? '');
       const full = ['definition', 'example', 'form', 'note'].includes(field.type) || /뜻풀이|용례|수형|수형문|손모양|메모|비고/.test(field.label);
       const useTextarea = full || String(value).length > 40;
       return `
